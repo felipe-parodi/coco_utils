@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 def merge_coco_files(
     coco_paths: List[Union[str, Path]], output_path: Union[str, Path]
 ) -> None:
+    # TODO: add option to move images to one dir similar to copy_images in split_coco_dataset?
     """Merges multiple COCO-formatted JSON files into a single file.
 
     Handles re-assigning unique IDs for images and annotations, and merges
