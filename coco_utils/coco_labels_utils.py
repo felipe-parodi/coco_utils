@@ -89,7 +89,7 @@ def shrink_bbox(
     return new_bbox
 
 
-def shrink_coco_bboxes_interactive(
+def shrink_coco_bboxes(
     coco_data: Dict,
     image_dir: str,
     shrink_percent: float = 5.0,
@@ -98,28 +98,36 @@ def shrink_coco_bboxes_interactive(
     original_box_color: str = "blue",
     shrunk_box_color: str = "red",
     box_width: int = 2,
+    interactive: bool = True
 ) -> Optional[str]:
     """
-    Shrinks all bounding boxes in COCO data towards their center by a percentage,
-    visualizes changes for the first modified image **showing original (blue) and
-    shrunk (red) boxes together**, and saves the entire modified dataset
-    upon a single user confirmation.
+    Shrinks all bounding boxes in COCO data towards their center by a percentage.
+
+    If interactive=True, visualizes changes for the first modified image
+    (showing original and shrunk boxes together) and saves the entire modified
+    dataset upon a single user confirmation.
+
+    If interactive=False, performs the shrinkage calculation and saves the
+    result directly to the output file without visualization or prompts.
 
     Args:
         coco_data: Loaded COCO data dictionary.
-        image_dir: Path to the directory containing images.
+        image_dir: Path to the directory containing images (needed for interactive mode).
         shrink_percent: Percentage to shrink width/height (0 < shrink_percent < 100).
-        json_output_dir: Directory to save the modified JSON file. If None,
-                         changes are potentially accepted but not saved.
+        json_output_dir: Directory to save the modified JSON file. If None and
+                         interactive=False, changes are calculated but not saved.
         output_filename: Name for the output JSON file.
-        original_box_color: Color for original bounding boxes.
-        shrunk_box_color: Color for shrunk bounding boxes.
-        box_width: Width of bounding box outlines.
+        original_box_color: Color for original bounding boxes in interactive mode.
+        shrunk_box_color: Color for shrunk bounding boxes in interactive mode.
+        box_width: Width of bounding box outlines in interactive mode.
+        interactive: If True, show visualization and ask for confirmation.
+                     If False, process and save directly.
 
     Returns:
         The path to the saved JSON file if saved, otherwise None.
     """
-    print(f"Starting batch bounding box shrinking process ({shrink_percent}%)...")
+    mode_str = "interactive" if interactive else "batch"
+    print(f"Starting {mode_str} bounding box shrinking process ({shrink_percent}%)...")
 
     # 1. Deep copy the data
     modified_coco_data = copy.deepcopy(coco_data)
@@ -130,17 +138,7 @@ def shrink_coco_bboxes_interactive(
     num_boxes_shrunk = 0
     for i, ann in enumerate(modified_coco_data.get("annotations", [])):
         if "bbox" in ann and ann["bbox"] is not None and len(ann["bbox"]) == 4:
-            original_bbox = ann[
-                "bbox"
-            ]  # Note: original_bbox here is from the data *before* this loop iteration
-            image_id = ann["image_id"]
-
-            img_info = find_image_info(modified_coco_data, image_id)
-            img_width = img_info.get("width") if img_info else None
-            img_height = img_info.get("height") if img_info else None
-
-            # Get the original bbox from the *original* data for comparison later
-            # Find the specific original annotation to ensure we compare correctly if multiple annotations exist
+            # Get the original bbox from the *original* data for comparison
             original_ann = next(
                 (
                     orig_ann
@@ -149,9 +147,17 @@ def shrink_coco_bboxes_interactive(
                 ),
                 None,
             )
+            # Use original annotation's bbox if found, otherwise current annotation's
             bbox_to_shrink = (
-                original_ann["bbox"] if original_ann else ann["bbox"]
-            )  # Fallback to current ann bbox if original not found by ID
+                original_ann["bbox"] if original_ann and original_ann.get("bbox") else ann["bbox"]
+            )
+            if not bbox_to_shrink or len(bbox_to_shrink) != 4: # Added check for valid bbox_to_shrink
+                continue # Skip if no valid bbox found to shrink
+
+            image_id = ann["image_id"]
+            img_info = find_image_info(modified_coco_data, image_id)
+            img_width = img_info.get("width") if img_info else None
+            img_height = img_info.get("height") if img_info else None
 
             new_bbox = shrink_bbox(
                 bbox_to_shrink, shrink_percent, img_width, img_height
@@ -172,187 +178,189 @@ def shrink_coco_bboxes_interactive(
         f"Shrinking calculation complete. {num_boxes_shrunk} boxes potentially modified across {len(modified_image_ids)} images."
     )
 
-    # 3. Visualize the *first* modified image with combined boxes
-    print(
-        "\nVisualizing changes on the first modified image (Original=Blue, Shrunk=Red)..."
-    )
-    accept_changes = False
-    first_modified_id = sorted(list(modified_image_ids))[0]
-
-    img_info = find_image_info(coco_data, first_modified_id)
-    if not img_info:
+    # --- Interactive Section ---
+    accept_changes = False # Default to False
+    if interactive:
         print(
-            f"Error: Could not find image info for example image ID {first_modified_id}. Skipping visualization."
+            "\nVisualizing changes on the first modified image (Original=Blue, Shrunk=Red)..."
         )
-        # Decide how to proceed - maybe ask without visualization? For now, let's exit.
-        return None
+        first_modified_id = sorted(list(modified_image_ids))[0]
 
-    image_filename = img_info.get("file_name")
-    if not image_filename:
-        print(f"Error: 'file_name' missing for example image ID {first_modified_id}.")
-        return None
-    image_path = os.path.join(image_dir, image_filename)
-
-    try:
-        img = Image.open(image_path).convert("RGB")
-    except FileNotFoundError:
-        print(f"Error: Image file not found at '{image_path}' for visualization.")
-        return None
-    except Exception as e:
-        print(f"Error loading image '{image_path}' for visualization: {e}")
-        return None
-
-    draw = ImageDraw.Draw(img)
-
-    # Get annotations for this specific image
-    original_annotations = find_annotations(coco_data, first_modified_id)
-    modified_annotations = find_annotations(modified_coco_data, first_modified_id)
-
-    print(
-        f"--- Example Image (ID: {first_modified_id}, Filename: {image_filename}) ---"
-    )
-    print(
-        f"Drawing {len(original_annotations)} original boxes (Blue) and {len(modified_annotations)} shrunk boxes (Red)."
-    )
-
-    # Draw original boxes
-    num_orig_drawn = 0
-    for ann in original_annotations:
-        bbox = ann.get("bbox")
-        if bbox and len(bbox) == 4:
-            x_min, y_min, width, height = bbox
-            x_max = x_min + width
-            y_max = y_min + height
-            draw.rectangle(
-                [x_min, y_min, x_max, y_max],
-                outline=original_box_color,
-                width=box_width,
+        img_info = find_image_info(coco_data, first_modified_id)
+        if not img_info:
+            print(
+                f"Error: Could not find image info for example image ID {first_modified_id}. Cannot proceed with interactive confirmation."
             )
-            num_orig_drawn += 1
+            return None # Exit if visualization is impossible in interactive mode
 
-    # Draw modified (shrunk) boxes
-    num_shrunk_drawn = 0
-    for ann in modified_annotations:
-        bbox = ann.get("bbox")
-        if bbox and len(bbox) == 4:
-            x_min, y_min, width, height = bbox
-            x_max = x_min + width
-            y_max = y_min + height
-            # Check if this box was actually shrunk compared to original (optional, but good)
-            # Requires finding the corresponding original annotation ID
-            original_ann = next(
-                (
-                    orig_ann
-                    for orig_ann in original_annotations
-                    if orig_ann.get("id") == ann.get("id")
-                ),
-                None,
-            )
-            if (
-                original_ann and original_ann.get("bbox") != bbox
-            ):  # Only draw red if different
-                draw.rectangle(
-                    [x_min, y_min, x_max, y_max],
-                    outline=shrunk_box_color,
-                    width=box_width,
-                )
-                num_shrunk_drawn += 1
-            elif not original_ann:  # If somehow it's a new annotation? Draw red.
-                draw.rectangle(
-                    [x_min, y_min, x_max, y_max],
-                    outline=shrunk_box_color,
-                    width=box_width,
-                )
-                num_shrunk_drawn += 1
-            # If the box wasn't shrunk (e.g. due to constraints), it was already drawn blue.
-
-    print(
-        f"Displayed: {num_orig_drawn} original boxes, {num_shrunk_drawn} visually shrunk boxes."
-    )
-
-    # Display the combined image
-    plt.figure(figsize=(12, 12))  # Increased figure size slightly
-    plt.imshow(img)
-    title = (
-        f"Image ID: {first_modified_id} - Shrinkage Example ({shrink_percent}%)\n"
-        f"Original (Blue) vs. Shrunk (Red)"
-    )
-    plt.title(title)
-    plt.axis("off")
-    plt.show(block=True)  # Block to wait for user input
-
-    # 4. Single Confirmation Prompt (remains the same)
-    while True:
-        user_input = (
-            input(
-                f"Accept shrinkage for ALL {len(modified_image_ids)} modified images based on this example? "
-                f"(y=Yes, n=No/Discard): "
-            )
-            .lower()
-            .strip()
-        )
-        if user_input == "y":
-            accept_changes = True
-            print(f"Accepted changes for all modified images.")
-            break
-        elif user_input == "n":
-            print("Discarding all shrinkage changes.")
-            plt.close("all")
+        image_filename = img_info.get("file_name")
+        if not image_filename:
+            print(f"Error: 'file_name' missing for example image ID {first_modified_id}.")
             return None
-        else:
-            print("Invalid input. Please enter y or n.")
+        image_path = os.path.join(image_dir, image_filename)
 
-    plt.close("all")
+        try:
+            img = Image.open(image_path).convert("RGB")
+        except FileNotFoundError:
+            print(f"Error: Image file not found at '{image_path}' for visualization.")
+            return None
+        except Exception as e:
+            print(f"Error loading image '{image_path}' for visualization: {e}")
+            return None
 
-    # 5. Final Confirmation & Save (remains the same)
-    if not accept_changes:  # Should already have returned if 'n', but double-check
+        draw = ImageDraw.Draw(img)
+        original_annotations = find_annotations(coco_data, first_modified_id)
+        current_modified_annotations = find_annotations(modified_coco_data, first_modified_id) # Use local var name
+
+        print(
+            f"--- Example Image (ID: {first_modified_id}, Filename: {image_filename}) ---"
+        )
+        print(
+            f"Drawing {len(original_annotations)} original boxes (Blue) and {len(current_modified_annotations)} shrunk boxes (Red)."
+        )
+
+        # Draw original boxes
+        num_orig_drawn = 0
+        for ann_orig in original_annotations: # Use different var name
+            bbox = ann_orig.get("bbox")
+            if bbox and len(bbox) == 4:
+                x_min, y_min, width, height = bbox
+                x_max = x_min + width
+                y_max = y_min + height
+                draw.rectangle(
+                    [x_min, y_min, x_max, y_max],
+                    outline=original_box_color,
+                    width=box_width,
+                )
+                num_orig_drawn += 1
+
+        # Draw modified (shrunk) boxes
+        num_shrunk_drawn = 0
+        for ann_mod in current_modified_annotations: # Use different var name
+            bbox = ann_mod.get("bbox")
+            if bbox and len(bbox) == 4:
+                x_min, y_min, width, height = bbox
+                x_max = x_min + width
+                y_max = y_min + height
+                # Find corresponding original to check if it actually changed
+                original_ann_match = next(
+                    (
+                        orig_ann
+                        for orig_ann in original_annotations
+                        if orig_ann.get("id") == ann_mod.get("id")
+                    ),
+                    None,
+                )
+                # Only draw red if it's different from original (or if original didn't exist)
+                if not original_ann_match or original_ann_match.get("bbox") != bbox:
+                    draw.rectangle(
+                        [x_min, y_min, x_max, y_max],
+                        outline=shrunk_box_color,
+                        width=box_width,
+                    )
+                    num_shrunk_drawn += 1
+
+        print(
+            f"Displayed: {num_orig_drawn} original boxes, {num_shrunk_drawn} visually shrunk boxes."
+        )
+
+        plt.figure(figsize=(12, 12))
+        plt.imshow(img)
+        title = (
+            f"Image ID: {first_modified_id} - Shrinkage Example ({shrink_percent}%)\n"
+            f"Original (Blue) vs. Shrunk (Red)"
+        )
+        plt.title(title)
+        plt.axis("off")
+        plt.show(block=True)
+
+        # Confirmation Prompt
+        while True:
+            user_input = (
+                input(
+                    f"Accept shrinkage for ALL {len(modified_image_ids)} modified images based on this example? "
+                    f"(y=Yes, n=No/Discard): "
+                )
+                .lower()
+                .strip()
+            )
+            if user_input == "y":
+                accept_changes = True # Set flag to accept
+                print(f"Accepted changes for all modified images.")
+                break
+            elif user_input == "n":
+                print("Discarding all shrinkage changes.")
+                plt.close("all")
+                return None # Discard changes and exit
+            else:
+                print("Invalid input. Please enter y or n.")
+        plt.close("all") # Close figures after decision
+
+    else:
+        # Non-interactive mode: automatically accept all calculated changes
+        print("Running in non-interactive mode. All calculated changes will be applied.")
+        accept_changes = True
+
+    # --- Final Save Section ---
+    if not accept_changes:
+        # This should only be reachable if interactive was True and user chose 'n'
+        print("Changes were not accepted.")
         return None
 
     if json_output_dir is None:
-        print("\nNo output directory provided. Changes accepted but not saved.")
-        # If you wanted to return the modified dict: return modified_coco_data
+        print("\nNo output directory provided. Changes calculated but not saved.")
+        # Optionally return modified_coco_data here if desired
         return None
 
-    output_path = os.path.join(json_output_dir, output_filename)
-    os.makedirs(json_output_dir, exist_ok=True)  # Ensure directory exists
+    output_path = Path(json_output_dir) / output_filename # Use Path object
+    output_path.parent.mkdir(parents=True, exist_ok=True) # Ensure directory exists
 
     print(f"\nFinal check:")
     print(f" - Original image count: {len(coco_data.get('images', []))}")
     print(f" - Original annotation count: {len(coco_data.get('annotations', []))}")
-    print(
-        f" - Final image count: {len(modified_coco_data['images'])} (Unaffected by shrinkage)"
-    )
-    print(
-        f" - Final annotation count: {len(modified_coco_data['annotations'])} (Unaffected by shrinkage)"
-    )
-    print(
-        f" - Bounding boxes shrunk by {shrink_percent}% in {len(modified_image_ids)} images."
-    )
+    print(f" - Final image count: {len(modified_coco_data['images'])} (Unaffected by shrinkage)")
+    print(f" - Final annotation count: {len(modified_coco_data['annotations'])} (Unaffected by shrinkage)")
+    print(f" - Bounding boxes shrunk by {shrink_percent}% in {len(modified_image_ids)} images.")
 
-    while True:
-        save_confirm = (
-            input(
-                f"Save the modified COCO data (all changes) to '{output_path}'? (y/n): "
+    # Skip final save confirmation in non-interactive mode
+    save_confirmed = False
+    if interactive:
+         while True:
+            save_confirm_input = (
+                input(
+                    f"Save the modified COCO data (all accepted changes) to '{output_path}'? (y/n): "
+                )
+                .lower()
+                .strip()
             )
-            .lower()
-            .strip()
-        )
-        if save_confirm == "y":
-            try:
-                print(f"Saving modified data to {output_path}...")
-                with open(output_path, "w") as f:
-                    # Save the *entire* modified structure
-                    json.dump(modified_coco_data, f, indent=2)
-                print("Save successful.")
-                return output_path
-            except Exception as e:
-                print(f"Error saving file: {e}")
+            if save_confirm_input == "y":
+                save_confirmed = True
+                break
+            elif save_confirm_input == "n":
+                print("Save cancelled. Discarding accepted changes.")
                 return None
-        elif save_confirm == "n":
-            print("Save cancelled. Discarding changes.")
+            else:
+                print("Invalid input. Please enter y or n.")
+    else:
+        # Automatically confirm save in non-interactive mode
+        save_confirmed = True
+        print(f"Saving modified data automatically to '{output_path}'...")
+
+    # Perform save if confirmed (either interactively or automatically)
+    if save_confirmed:
+        try:
+            with open(output_path, "w") as f:
+                json.dump(modified_coco_data, f, indent=2)
+            print("Save successful.")
+            return str(output_path) # Return path as string
+        except Exception as e:
+            print(f"Error saving file: {e}")
             return None
-        else:
-            print("Invalid input. Please enter y or n.")
+    else:
+         # This case should ideally not be reached if logic is correct,
+         # but included for safety.
+         print("Save was not confirmed.")
+         return None
 
 
 def merge_coco_files(
