@@ -12,6 +12,7 @@ import json
 import math
 import os
 from pathlib import Path
+import time # Import the time module
 from typing import Any, Dict, List, Optional, Union
 
 import matplotlib.pyplot as plt
@@ -91,10 +92,9 @@ def shrink_bbox(
 
 def shrink_coco_bboxes(
     coco_data: Dict,
-    image_dir: str,
+    output_path: Union[str, Path],
+    image_dir: Optional[str] = None,
     shrink_percent: float = 5.0,
-    json_output_dir: Optional[str] = None,
-    output_filename: str = "coco_annotations_shrunk.json",
     original_box_color: str = "blue",
     shrunk_box_color: str = "red",
     box_width: int = 2,
@@ -105,18 +105,16 @@ def shrink_coco_bboxes(
 
     If interactive=True, visualizes changes for the first modified image
     (showing original and shrunk boxes together) and saves the entire modified
-    dataset upon a single user confirmation.
+    dataset upon user confirmation.
 
     If interactive=False, performs the shrinkage calculation and saves the
     result directly to the output file without visualization or prompts.
 
     Args:
         coco_data: Loaded COCO data dictionary.
-        image_dir: Path to the directory containing images (needed for interactive mode).
+        output_path: Full path (including filename) to save the modified JSON file.
+        image_dir: Path to the directory containing images (Required if interactive=True).
         shrink_percent: Percentage to shrink width/height (0 < shrink_percent < 100).
-        json_output_dir: Directory to save the modified JSON file. If None and
-                         interactive=False, changes are calculated but not saved.
-        output_filename: Name for the output JSON file.
         original_box_color: Color for original bounding boxes in interactive mode.
         shrunk_box_color: Color for shrunk bounding boxes in interactive mode.
         box_width: Width of bounding box outlines in interactive mode.
@@ -125,7 +123,22 @@ def shrink_coco_bboxes(
 
     Returns:
         The path to the saved JSON file if saved, otherwise None.
+
+    Raises:
+        ValueError: If required arguments are missing (e.g., image_dir in interactive mode).
+        FileNotFoundError: If image directory or specific images are not found in interactive mode.
+        Exception: For other file loading or saving errors.
     """
+    # --- Input Validation ---
+    output_path = Path(output_path) # Ensure it's a Path object early
+
+    if interactive:
+        if image_dir is None:
+             raise ValueError("image_dir must be provided when interactive=True.")
+        if not os.path.isdir(image_dir):
+            raise FileNotFoundError(f"Image directory not found for interactive mode: {image_dir}")
+
+
     mode_str = "interactive" if interactive else "batch"
     print(f"Starting {mode_str} bounding box shrinking process ({shrink_percent}%)...")
 
@@ -168,18 +181,20 @@ def shrink_coco_bboxes(
                 modified_image_ids.add(image_id)
                 num_boxes_shrunk += 1
 
+
     if not modified_image_ids:
         print(
-            "No valid bounding boxes found or no changes made after shrinking. Nothing to visualize or save."
+            "No valid bounding boxes found or no changes made after shrinking. No file saved."
         )
         return None
+
 
     print(
         f"Shrinking calculation complete. {num_boxes_shrunk} boxes potentially modified across {len(modified_image_ids)} images."
     )
 
     # --- Interactive Section ---
-    accept_changes = False # Default to False
+    accept_changes = False
     if interactive:
         print(
             "\nVisualizing changes on the first modified image (Original=Blue, Shrunk=Red)..."
@@ -187,26 +202,20 @@ def shrink_coco_bboxes(
         first_modified_id = sorted(list(modified_image_ids))[0]
 
         img_info = find_image_info(coco_data, first_modified_id)
-        if not img_info:
-            print(
-                f"Error: Could not find image info for example image ID {first_modified_id}. Cannot proceed with interactive confirmation."
-            )
-            return None # Exit if visualization is impossible in interactive mode
 
         image_filename = img_info.get("file_name")
         if not image_filename:
-            print(f"Error: 'file_name' missing for example image ID {first_modified_id}.")
-            return None
+            raise ValueError(f"'file_name' missing for example image ID {first_modified_id}.")
+
+        # image_dir is guaranteed to be valid here due to check at start
         image_path = os.path.join(image_dir, image_filename)
 
         try:
             img = Image.open(image_path).convert("RGB")
         except FileNotFoundError:
-            print(f"Error: Image file not found at '{image_path}' for visualization.")
-            return None
+            raise FileNotFoundError(f"Image file not found at '{image_path}' for visualization.")
         except Exception as e:
-            print(f"Error loading image '{image_path}' for visualization: {e}")
-            return None
+            raise Exception(f"Error loading image '{image_path}' for visualization: {e}") from e
 
         draw = ImageDraw.Draw(img)
         original_annotations = find_annotations(coco_data, first_modified_id)
@@ -264,6 +273,7 @@ def shrink_coco_bboxes(
             f"Displayed: {num_orig_drawn} original boxes, {num_shrunk_drawn} visually shrunk boxes."
         )
 
+
         plt.figure(figsize=(12, 12))
         plt.imshow(img)
         title = (
@@ -274,46 +284,41 @@ def shrink_coco_bboxes(
         plt.axis("off")
         plt.show(block=True)
 
+        print("Waiting for plot window...")
+        time.sleep(1)
+
         # Confirmation Prompt
         while True:
             user_input = (
                 input(
-                    f"Accept shrinkage for ALL {len(modified_image_ids)} modified images based on this example? "
-                    f"(y=Yes, n=No/Discard): "
+                    f"\nAccept shrinkage for ALL {len(modified_image_ids)} modified images? (y/n): "
                 )
                 .lower()
                 .strip()
             )
             if user_input == "y":
-                accept_changes = True # Set flag to accept
+                accept_changes = True
                 print(f"Accepted changes for all modified images.")
                 break
             elif user_input == "n":
                 print("Discarding all shrinkage changes.")
                 plt.close("all")
-                return None # Discard changes and exit
+                return None
             else:
                 print("Invalid input. Please enter y or n.")
-        plt.close("all") # Close figures after decision
+        plt.close("all")
 
     else:
-        # Non-interactive mode: automatically accept all calculated changes
         print("Running in non-interactive mode. All calculated changes will be applied.")
         accept_changes = True
 
     # --- Final Save Section ---
     if not accept_changes:
-        # This should only be reachable if interactive was True and user chose 'n'
         print("Changes were not accepted.")
         return None
 
-    if json_output_dir is None:
-        print("\nNo output directory provided. Changes calculated but not saved.")
-        # Optionally return modified_coco_data here if desired
-        return None
-
-    output_path = Path(json_output_dir) / output_filename # Use Path object
-    output_path.parent.mkdir(parents=True, exist_ok=True) # Ensure directory exists
+    # output_path is already a Path object and guaranteed non-None
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
     print(f"\nFinal check:")
     print(f" - Original image count: {len(coco_data.get('images', []))}")
@@ -322,13 +327,13 @@ def shrink_coco_bboxes(
     print(f" - Final annotation count: {len(modified_coco_data['annotations'])} (Unaffected by shrinkage)")
     print(f" - Bounding boxes shrunk by {shrink_percent}% in {len(modified_image_ids)} images.")
 
-    # Skip final save confirmation in non-interactive mode
+
     save_confirmed = False
     if interactive:
          while True:
             save_confirm_input = (
                 input(
-                    f"Save the modified COCO data (all accepted changes) to '{output_path}'? (y/n): "
+                    f"Save the modified COCO data to '{output_path}'? (y/n): "
                 )
                 .lower()
                 .strip()
@@ -342,23 +347,19 @@ def shrink_coco_bboxes(
             else:
                 print("Invalid input. Please enter y or n.")
     else:
-        # Automatically confirm save in non-interactive mode
         save_confirmed = True
         print(f"Saving modified data automatically to '{output_path}'...")
 
-    # Perform save if confirmed (either interactively or automatically)
     if save_confirmed:
         try:
             with open(output_path, "w") as f:
-                json.dump(modified_coco_data, f, indent=2)
+                json.dump(modified_coco_data, f, indent=4) # Keep indent=4
             print("Save successful.")
-            return str(output_path) # Return path as string
+            return str(output_path)
         except Exception as e:
             print(f"Error saving file: {e}")
-            return None
+            raise Exception(f"Error saving file: {e}") from e
     else:
-         # This case should ideally not be reached if logic is correct,
-         # but included for safety.
          print("Save was not confirmed.")
          return None
 
@@ -546,3 +547,4 @@ def merge_coco_files(
 
     except Exception as e:
         print(f"Error saving final merged file: {e}")
+
