@@ -207,8 +207,7 @@ def shrink_coco_bboxes(
         if not image_filename:
             raise ValueError(f"'file_name' missing for example image ID {first_modified_id}.")
 
-        # image_dir is guaranteed to be valid here due to check at start
-        image_path = os.path.join(image_dir, image_filename)
+        image_path = os.path.join(image_dir, image_filename) # image_dir guaranteed valid here
 
         try:
             img = Image.open(image_path).convert("RGB")
@@ -273,7 +272,6 @@ def shrink_coco_bboxes(
             f"Displayed: {num_orig_drawn} original boxes, {num_shrunk_drawn} visually shrunk boxes."
         )
 
-
         plt.figure(figsize=(12, 12))
         plt.imshow(img)
         title = (
@@ -287,7 +285,7 @@ def shrink_coco_bboxes(
         print("Waiting for plot window...")
         time.sleep(1)
 
-        # Confirmation Prompt
+        # Confirmation Prompt for changes
         while True:
             user_input = (
                 input(
@@ -301,7 +299,7 @@ def shrink_coco_bboxes(
                 print(f"Accepted changes for all modified images.")
                 break
             elif user_input == "n":
-                print("Discarding all shrinkage changes.")
+                print("Discarding all shrinkage changes. No file will be saved.")
                 plt.close("all")
                 return None
             else:
@@ -309,59 +307,39 @@ def shrink_coco_bboxes(
         plt.close("all")
 
     else:
+        # Non-interactive mode: automatically accept all calculated changes
         print("Running in non-interactive mode. All calculated changes will be applied.")
         accept_changes = True
 
     # --- Final Save Section ---
     if not accept_changes:
-        print("Changes were not accepted.")
+        # This case should now only be reachable if interactive=True and user entered 'n'
+        # The 'n' case already returned None, so this part might be logically unreachable,
+        # but keep it as a safeguard.
+        print("Changes were not accepted. No file saved.")
         return None
 
-    # output_path is already a Path object and guaranteed non-None
+    # If we reach here, changes are accepted (either interactively or automatically)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    print(f"\nFinal check:")
+    print(f"\nSummary before saving:") # Changed print message
+    print(f" - Output path: {output_path}")
     print(f" - Original image count: {len(coco_data.get('images', []))}")
     print(f" - Original annotation count: {len(coco_data.get('annotations', []))}")
-    print(f" - Final image count: {len(modified_coco_data['images'])} (Unaffected by shrinkage)")
-    print(f" - Final annotation count: {len(modified_coco_data['annotations'])} (Unaffected by shrinkage)")
+    print(f" - Final image count: {len(modified_coco_data['images'])}")
+    print(f" - Final annotation count: {len(modified_coco_data['annotations'])}")
     print(f" - Bounding boxes shrunk by {shrink_percent}% in {len(modified_image_ids)} images.")
 
-
-    save_confirmed = False
-    if interactive:
-         while True:
-            save_confirm_input = (
-                input(
-                    f"Save the modified COCO data to '{output_path}'? (y/n): "
-                )
-                .lower()
-                .strip()
-            )
-            if save_confirm_input == "y":
-                save_confirmed = True
-                break
-            elif save_confirm_input == "n":
-                print("Save cancelled. Discarding accepted changes.")
-                return None
-            else:
-                print("Invalid input. Please enter y or n.")
-    else:
-        save_confirmed = True
-        print(f"Saving modified data automatically to '{output_path}'...")
-
-    if save_confirmed:
-        try:
-            with open(output_path, "w") as f:
-                json.dump(modified_coco_data, f, indent=4) # Keep indent=4
-            print("Save successful.")
-            return str(output_path)
-        except Exception as e:
-            print(f"Error saving file: {e}")
-            raise Exception(f"Error saving file: {e}") from e
-    else:
-         print("Save was not confirmed.")
-         return None
+    # Proceed directly to saving
+    print(f"\nSaving modified data to '{output_path}'...")
+    try:
+        with open(output_path, "w") as f:
+            json.dump(modified_coco_data, f, indent=4)
+        print("Save successful.")
+        return str(output_path)
+    except Exception as e:
+        print(f"Error saving file: {e}")
+        raise Exception(f"Error saving file: {e}") from e
 
 
 def merge_coco_files(
