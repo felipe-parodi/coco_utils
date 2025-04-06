@@ -2,11 +2,27 @@
 
 This package provides a collection of Python utilities for working with datasets in the COCO (Common Objects in Context) format. It helps with visualizing annotations, manipulating label data, and performing common file-level operations like merging and splitting datasets.
 
+## Installation
+
+You can install this package directly from GitHub using pip:
+
+```bash
+pip install git+https://github.com/felipe-parodi/coco_utils.git
+```
+
+Alternatively, clone the repository and install in editable mode for development:
+
+```bash
+git clone https://github.com/felipe-parodi/coco_utils.git
+cd coco_utils
+pip install -e .
+```
+
 ## Modules
 
-*   **`coco_viz_utils.py`**: Contains functions for visualizing annotations (bounding boxes, keypoints) on images. Requires `matplotlib` and `Pillow`.
-*   **`coco_labels_utils.py`**: Includes functions for modifying annotation data *within* a loaded COCO structure (e.g., shrinking bounding boxes interactively).
-*   **`coco_file_utils.py`**: Offers functions for operating on COCO JSON files themselves (e.g., merging multiple COCO files, splitting a dataset into train/val/test).
+*   **`coco_utils.coco_viz_utils`**: Contains functions for visualizing annotations (bounding boxes, keypoints) on images.
+*   **`coco_utils.coco_labels_utils`**: Includes functions for modifying annotation data *within* a loaded COCO structure (e.g., shrinking bounding boxes interactively).
+*   **`coco_utils.coco_file_utils`**: Offers functions for operating on COCO JSON files themselves (e.g., merging multiple COCO files, splitting a dataset into train/val/test).
 
 ## Core Functionality Examples
 
@@ -14,7 +30,8 @@ This package provides a collection of Python utilities for working with datasets
 
 ```python
 import json
-from coco_utils.coco_viz_utils import visualize_bbox, visualize_keypoints
+
+from coco_utils import visualize_bbox, visualize_keypoints
 
 # Load data
 coco_file = 'path/to/your/annotations.json'
@@ -35,7 +52,7 @@ visualize_keypoints(coco_data, image_id_to_show, image_dir)
 
 ```python
 import json
-from coco_utils.coco_labels_utils import shrink_coco_bboxes_interactive
+from coco_utils import shrink_coco_bboxes
 
 # Load data
 coco_file = 'path/to/your/annotations.json'
@@ -63,8 +80,9 @@ if saved_path:
 **Merging Files:**
 
 ```python
-from coco_utils.coco_file_utils import merge_coco_files
 
+from coco_utils import merge_coco_files
+    
 coco_files_to_merge = [
     'path/to/coco1.json',
     'path/to/coco2.json',
@@ -78,7 +96,7 @@ merge_coco_files(coco_files_to_merge, output_merged_file)
 **Splitting Dataset:**
 
 ```python
-from coco_utils.coco_file_utils import split_coco_dataset
+from coco_utils import split_coco_dataset
 
 input_coco_file = 'path/to/full_dataset.json'
 output_split_dir = 'path/to/output/splits/'
