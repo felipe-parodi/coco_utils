@@ -1,0 +1,63 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+
+# Distribution / packaging / eggs
+build/
+develop-eggs/
+dist/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.pytest_cache/
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+VENV/
+*/env/
+*/venv/
+
+# Temporary / Downloaded Files
+downloads/
+var/
+
+# IDEs / Editors (Optional, uncomment if needed)
+# .vscode/
+# .idea/
+# *.sublime-project
+# *.sublime-workspace
+# *.swp
+# *~
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Other project-specific files (Add as needed) 
