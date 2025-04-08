@@ -130,3 +130,4 @@ if train_path:
     *   Add sampling options back to `merge_coco_files`.
     *   Support for other annotation formats or conversions.
 *   **Efficiency:** Profile and optimize file operations for very large datasets. 
+*   **Convenience:** Add a function to convert between COCO and other formats (e.g., YOLO, VOC).
