@@ -1,8 +1,5 @@
 # refine_boxes.py
 
-# i have a COCO dataset with a dir of images and a dir of annotations
-# i want to refine the boxes in a fast GUI
-
 #TODO:
 # - add docstring
 # - why does the gui look low-res?
@@ -13,10 +10,18 @@ import os
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from typing import Any, Dict, List, Set, Tuple, Union
+import copy
+import argparse
 
 import cv2
 import numpy as np
 from PIL import Image, ImageTk
+
+# Import the shrinking utility
+from coco_utils.coco_labels_utils import calculate_shrunk_bboxes
+
+# Define the fixed shrink percentage
+SHRINK_PERCENTAGE = 5.0
 
 # --- COCO Data Loading ---
 
@@ -26,26 +31,38 @@ def load_coco_data(
 ) -> Tuple[Dict[int, Dict], Dict[int, List[Dict]], List[Dict], int]:
     """Loads COCO data and organizes it for the GUI."""
     print(f"Loading COCO data from: {coco_json_path}")
+    # Strip potential quotes from the path (common issue with 'Copy as path' on Windows)
+    cleaned_coco_path = coco_json_path.strip('\"\'')
+    print(f"Attempting to open cleaned path: {cleaned_coco_path}")
     try:
-        with open(coco_json_path, "r") as f:
+        with open(cleaned_coco_path, "r") as f:
             data = json.load(f)
     except FileNotFoundError:
-        messagebox.showerror("Error", f"COCO JSON file not found: {coco_json_path}")
+        messagebox.showerror("Error", f"COCO JSON file not found: {cleaned_coco_path}")
         return None, None, None, -1
     except json.JSONDecodeError:
         messagebox.showerror(
-            "Error", f"Error decoding COCO JSON file: {coco_json_path}"
+            "Error", f"Error decoding COCO JSON file: {cleaned_coco_path}"
         )
         return None, None, None, -1
+    except OSError as e:
+        messagebox.showerror(
+            "Error", f"Error opening COCO JSON file: {cleaned_coco_path}\n{e}"
+        )
+        return None, None, None, -1
+
+    # Strip potential quotes from the image directory path as well
+    cleaned_img_dir = img_dir.strip('\"\'')
+    print(f"Using cleaned image directory: {cleaned_img_dir}")
 
     image_map = {}
     max_image_id = 0
     print("Mapping images...")
     for img in data.get("images", []):
         img_id = img["id"]
-        img_path = os.path.join(img_dir, img["file_name"])
+        img_path = os.path.join(cleaned_img_dir, img["file_name"]) # Use cleaned path
         if not os.path.exists(img_path):
-            print(f"Warning: Image file not found, skipping: {img_path}")
+            print(f"Warning: Image file not found, skipping: {img_path}") # Show the path checked
             continue
         image_map[img_id] = {
             "path": img_path,
@@ -83,88 +100,6 @@ def load_coco_data(
     return image_map, annotation_map, categories, next_new_ann_id
 
 
-# --- Setup Dialog ---
-
-
-def launch_setup_dialog() -> Union[Tuple[str, str, str], None]:
-    """Launches a dialog to get user input paths and view mode."""
-    setup_root = tk.Tk()
-    setup_root.title("Setup Refinement")
-    setup_root.geometry("500x200")
-
-    img_dir = tk.StringVar()
-    coco_json_path = tk.StringVar()
-    initial_view_mode = tk.StringVar(value="bbox")  # Default to bbox view
-    result = None
-
-    def browse_img_dir():
-        dir_path = filedialog.askdirectory(title="Select Image Directory")
-        if dir_path:
-            img_dir.set(dir_path)
-
-    def browse_coco_file():
-        file_path = filedialog.askopenfilename(
-            title="Select COCO JSON File", filetypes=[("JSON files", "*.json")]
-        )
-        if file_path:
-            coco_json_path.set(file_path)
-
-    def start_refinement():
-        nonlocal result
-        if not img_dir.get() or not coco_json_path.get():
-            messagebox.showwarning(
-                "Input Missing",
-                "Please select both image directory and COCO JSON file.",
-            )
-            return
-        result = (img_dir.get(), coco_json_path.get(), initial_view_mode.get())
-        setup_root.destroy()
-
-    ttk.Label(setup_root, text="Image Directory:").grid(
-        row=0, column=0, padx=5, pady=5, sticky="w"
-    )
-    ttk.Entry(setup_root, textvariable=img_dir, width=40).grid(
-        row=0, column=1, padx=5, pady=5
-    )
-    ttk.Button(setup_root, text="Browse...", command=browse_img_dir).grid(
-        row=0, column=2, padx=5, pady=5
-    )
-
-    ttk.Label(setup_root, text="COCO JSON File:").grid(
-        row=1, column=0, padx=5, pady=5, sticky="w"
-    )
-    ttk.Entry(setup_root, textvariable=coco_json_path, width=40).grid(
-        row=1, column=1, padx=5, pady=5
-    )
-    ttk.Button(setup_root, text="Browse...", command=browse_coco_file).grid(
-        row=1, column=2, padx=5, pady=5
-    )
-
-    ttk.Label(setup_root, text="Initial View:").grid(
-        row=2, column=0, padx=5, pady=5, sticky="w"
-    )
-    view_frame = ttk.Frame(setup_root)
-    ttk.Radiobutton(
-        view_frame, text="Boxes Only", variable=initial_view_mode, value="bbox"
-    ).pack(side=tk.LEFT, padx=5)
-    ttk.Radiobutton(
-        view_frame, text="Boxes and Poses", variable=initial_view_mode, value="pose"
-    ).pack(side=tk.LEFT, padx=5)
-    view_frame.grid(row=2, column=1, columnspan=2, sticky="w", padx=5, pady=5)
-
-    button_frame = ttk.Frame(setup_root)
-    ttk.Button(button_frame, text="Start", command=start_refinement).pack(
-        side=tk.LEFT, padx=10
-    )
-    ttk.Button(button_frame, text="Cancel", command=setup_root.destroy).pack(
-        side=tk.LEFT, padx=10
-    )
-    button_frame.grid(row=3, column=0, columnspan=3, pady=15)
-
-    setup_root.mainloop()
-    return result
-
-
 # --- Main Refinement GUI ---
 
 
@@ -175,6 +110,7 @@ class COCORefinementGUI:
         self,
         image_map: Dict[int, Dict],
         annotation_map: Dict[int, List[Dict]],
+        shrunk_annotation_map: Dict[int, List[Dict]],
         categories: List[Dict],
         initial_view_mode: str,
         coco_json_path: str,
@@ -185,10 +121,17 @@ class COCORefinementGUI:
         self.coco_json_path = coco_json_path
         self.output_path = coco_json_path.replace(".json", "_refined.json")
 
-        self.modified_annotations = {
-            img_id: [ann.copy() for ann in anns]
-            for img_id, anns in annotation_map.items()
-        }  # Deep copy
+        # Store original and shrunk annotations separately
+        # We need deep copies here to avoid modifying the originals inadvertently
+        # during the GUI operations before a decision is made.
+        self.original_annotations = copy.deepcopy(annotation_map)
+        self.shrunk_annotations = copy.deepcopy(shrunk_annotation_map)
+
+        # This holds the currently active annotations for the image being viewed/edited.
+        # It starts as a copy of the original, and will be updated when the user
+        # chooses original/shrunk or makes manual edits.
+        self.modified_annotations = copy.deepcopy(self.original_annotations)
+
         self.image_ids = sorted(list(image_map.keys()))  # Process in a consistent order
 
         if not self.image_ids:
@@ -197,23 +140,11 @@ class COCORefinementGUI:
 
         self.current_idx = 0
         self.view_mode = initial_view_mode
-        self.deleted_image_ids = set()
-        self.modifications_made = False  # Track if any changes occurred
-        self.next_new_ann_id = next_start_ann_id  # ID for newly created annotations
+        self.next_start_ann_id = next_start_ann_id
 
-        # Extract skeleton links if categories exist
-        self.skeleton_links = []
-        if self.categories:
-            # Assuming the first category defines the skeleton
-            skeleton = self.categories[0].get("skeleton", [])
-            keypoints_map = {
-                name: i + 1
-                for i, name in enumerate(self.categories[0].get("keypoints", []))
-            }  # Assumes keypoints are ordered 1-based for skeleton
-            # Convert skeleton pairs (which might be 1-based) to 0-based indices
-            # Or adjust logic if skeleton is already 0-based or name-based
-            # For now, assuming skeleton uses 1-based indexing as common in COCO
-            self.skeleton_links = [[s[0] - 1, s[1] - 1] for s in skeleton]
+        # Determine initial decision state based on whether shrinking was done
+        # If shrunk_annotation_map is empty or None, assume shrinking wasn't requested/successful
+        start_in_comparison_mode = bool(shrunk_annotation_map) # True if shrunk_anno_data is not empty/None
 
         # Initialize main window
         self.root = tk.Tk()
@@ -229,6 +160,27 @@ class COCORefinementGUI:
         self.new_box_start = None
         self.creating_new_box = False
         self.handle_size = 8  # Size of corner handles
+
+        self.image_decision_state: Dict[int, str] = { # Track user choice per image
+            img_id: 'undecided' if start_in_comparison_mode else 'original'
+            for img_id in self.image_ids
+        }
+        self.deleted_image_ids = set()
+        self.modifications_made = False  # Track if any changes occurred
+
+        # Extract skeleton links if categories exist
+        self.skeleton_links = []
+        if self.categories:
+            # Assuming the first category defines the skeleton
+            skeleton = self.categories[0].get("skeleton", [])
+            keypoints_map = {
+                name: i + 1
+                for i, name in enumerate(self.categories[0].get("keypoints", []))
+            }  # Assumes keypoints are ordered 1-based for skeleton
+            # Convert skeleton pairs (which might be 1-based) to 0-based indices
+            # Or adjust logic if skeleton is already 0-based or name-based
+            # For now, assuming skeleton uses 1-based indexing as common in COCO
+            self.skeleton_links = [[s[0] - 1, s[1] - 1] for s in skeleton]
 
         self._setup_gui()
         self._load_current_image()  # Load the first valid image
@@ -258,6 +210,12 @@ class COCORefinementGUI:
             top_ctrl_frame, textvariable=self.new_box_label, foreground="blue"
         ).pack(side=tk.LEFT, padx=10)
 
+        # Add Image Counter/Jumper Entry in top-left
+        self.image_jumper_var = tk.StringVar()
+        self.image_jumper_entry = ttk.Entry(top_ctrl_frame, textvariable=self.image_jumper_var, width=15)
+        self.image_jumper_entry.pack(side=tk.LEFT, padx=10)
+        self.image_jumper_entry.bind("<Return>", self._jump_to_image)
+
         # Canvas for image display
         self.canvas = tk.Canvas(
             main_frame, bg="gray", width=800, height=600
@@ -281,10 +239,6 @@ class COCORefinementGUI:
         ttk.Button(
             bottom_ctrl_frame, text="Complete && Save (Esc)", command=self._complete
         ).pack(side=tk.RIGHT, padx=5)
-        self.progress_var = tk.StringVar()
-        ttk.Label(bottom_ctrl_frame, textvariable=self.progress_var).pack(
-            side=tk.LEFT, padx=20
-        )
 
         # Bind mouse events
         self.canvas.bind("<Button-1>", self._on_mouse_down)
@@ -299,6 +253,11 @@ class COCORefinementGUI:
         self.root.bind("<Escape>", lambda e: self._complete())
         self.root.bind("<t>", lambda e: self._toggle_view_mode())
         self.root.bind("<n>", lambda e: self._toggle_new_box_mode())
+        # Add bindings for A and D keys
+        self.root.bind("<KeyPress-a>", self._accept_original)
+        self.root.bind("<KeyPress-d>", self._accept_shrunk)
+        # Add binding for temporary save
+        self.root.bind("<Control-s>", self._save_temp_progress)
 
         # Handle window close
         self.root.protocol("WM_DELETE_WINDOW", self._on_close_window)
@@ -325,7 +284,6 @@ class COCORefinementGUI:
         """Load and display current image with annotations"""
         if not self.image_ids:
             self.canvas.delete("all")
-            self.progress_var.set("No images remaining.")
             return
 
         current_img_id = self.image_ids[self.current_idx]
@@ -384,36 +342,105 @@ class COCORefinementGUI:
             self.offset_x, self.offset_y, anchor=tk.NW, image=self.photo
         )
 
+        # --- Display filename in top-right ---
+        filename = img_info.get("file_name", "N/A")
+        self.canvas.create_text(
+            canvas_w - 10, 10, # Position near top-right corner
+            text=filename,
+            anchor=tk.NE, # Anchor to North-East corner
+            fill="yellow",
+            font=("Arial", 10),
+            tags="filename_text"
+        )
+
+        # --- Update image counter entry widget ---
+        total_images = len(self.image_ids)
+        counter_text = f"{self.current_idx + 1} / {total_images}"
+        self.image_jumper_var.set(counter_text)
+
         self._draw_annotations()
 
-        # Update progress
-        self.progress_var.set(
-            f"Image {self.current_idx + 1} of {len(self.image_ids)} (ID: {current_img_id})"
-        )
         self.root.update_idletasks()  # Ensure canvas resizes
 
     def _draw_annotations(self):
-        """Draw annotations based on current view mode."""
+        """Draw annotations based on current image decision state and view mode."""
         self.canvas.delete(
-            "box", "handle", "pose", "keypoint", "skeleton"
-        )  # Clear specific tags
+            "box", "handle", "pose", "keypoint", "skeleton", "comparison_box" # Clear specific tags
+        )
 
         current_img_id = self.image_ids[self.current_idx]
-        annotations = self.modified_annotations.get(current_img_id, [])
+        state = self.image_decision_state.get(current_img_id, 'undecided')
 
+        if state == 'undecided':
+            # Comparison mode: Show original vs shrunk
+            self.canvas.itemconfig("handle", state=tk.HIDDEN) # Hide handles in comparison
+            self._draw_comparison_boxes(current_img_id)
+            # Optionally, add status text
+            self.canvas.create_text(
+                self.canvas.winfo_width() / 2, 20,
+                text="Compare: Original (Blue) vs Shrunk (Red). Press 'A' to keep Original, 'D' for Shrunk.",
+                fill="yellow", font=("Arial", 12), tags="status_text"
+            )
+        else:
+            # Active mode (original or shrunk chosen): Show editable annotations
+            self.canvas.delete("status_text") # Clear comparison text
+            self.canvas.itemconfig("handle", state=tk.NORMAL) # Show handles
+            self._draw_active_annotations(current_img_id)
+
+    def _draw_comparison_boxes(self, img_id: int):
+        """Draws original (blue) and different shrunk (red) boxes for comparison."""
+        original_anns = self.original_annotations.get(img_id, [])
+        shrunk_anns = self.shrunk_annotations.get(img_id, [])
+
+        # Create maps for easier lookup by annotation ID
+        original_bboxes_by_id = {
+            ann.get("id"): ann.get("bbox") for ann in original_anns if ann.get("id") is not None and ann.get("bbox")
+        }
+        shrunk_bboxes_by_id = {
+            ann.get("id"): ann.get("bbox") for ann in shrunk_anns if ann.get("id") is not None and ann.get("bbox")
+        }
+
+        # Draw original boxes (Blue)
+        for ann_id, bbox in original_bboxes_by_id.items():
+            x, y, w, h = bbox
+            x1 = x * self.scale + self.offset_x
+            y1 = y * self.scale + self.offset_y
+            x2 = (x + w) * self.scale + self.offset_x
+            y2 = (y + h) * self.scale + self.offset_y
+            self.canvas.create_rectangle(
+                x1, y1, x2, y2, outline="blue", width=2, tags=("comparison_box", f"ann{ann_id}_orig")
+            )
+
+        # Draw shrunk boxes (Red) ONLY if they differ from the original
+        for ann_id, shrunk_bbox in shrunk_bboxes_by_id.items():
+            original_bbox = original_bboxes_by_id.get(ann_id)
+            # Compare, draw red if shrunk exists and is different from original
+            if shrunk_bbox and (original_bbox is None or shrunk_bbox != original_bbox):
+                x, y, w, h = shrunk_bbox
+                x1 = x * self.scale + self.offset_x
+                y1 = y * self.scale + self.offset_y
+                x2 = (x + w) * self.scale + self.offset_x
+                y2 = (y + h) * self.scale + self.offset_y
+                self.canvas.create_rectangle(
+                    x1, y1, x2, y2, outline="red", width=2, tags=("comparison_box", f"ann{ann_id}_shrunk")
+                )
+
+    def _draw_active_annotations(self, img_id: int):
+        """Draw annotations from self.modified_annotations with editing handles/poses."""
+        annotations = self.modified_annotations.get(img_id, [])
         if not annotations:
             return
 
-        self._draw_boxes(annotations)
+        self._draw_active_boxes(annotations)
         if self.view_mode == "pose":
-            self._draw_poses(annotations)
+            self._draw_active_poses(annotations)
 
-    def _draw_boxes(self, annotations):
-        """Draw bounding boxes and handles."""
+    def _draw_active_boxes(self, annotations: List[Dict]):
+        """Draw editable bounding boxes and handles from the active set."""
         for ann in annotations:
             ann_id = ann["id"]
             bbox = ann.get("bbox")  # COCO format: [x, y, width, height]
-            if not bbox:
+            if not bbox or len(bbox) != 4: # Added check for valid bbox
                 continue
 
             x, y, w, h = bbox
@@ -424,13 +451,14 @@ class COCORefinementGUI:
 
             # Draw box
             box_tag = f"ann{ann_id}"
+            # Ensure box is drawn with correct tags for later interaction
             self.canvas.create_rectangle(
-                x1, y1, x2, y2, outline="red", width=2, tags=("box", box_tag)
+                x1, y1, x2, y2, outline="red", width=2, tags=("box", box_tag, "editable")
             )
 
             # Draw handles
-            handles_coords = [(x1, y1), (x2, y1), (x1, y2), (x2, y2)]
-            for hx, hy in handles_coords:
+            handles_coords = [(x1, y1, "topleft"), (x2, y1, "topright"), (x1, y2, "bottomleft"), (x2, y2, "bottomright")]
+            for hx, hy, corner_tag in handles_coords:
                 self.canvas.create_rectangle(
                     hx - self.handle_size / 2,
                     hy - self.handle_size / 2,
@@ -438,11 +466,12 @@ class COCORefinementGUI:
                     hy + self.handle_size / 2,
                     fill="white",
                     outline="red",
-                    tags=("handle", box_tag),
+                    # Add corner tag for easier identification during resize
+                    tags=("handle", box_tag, corner_tag, "editable"),
                 )
 
-    def _draw_poses(self, annotations):
-        """Draw keypoints and skeletons."""
+    def _draw_active_poses(self, annotations: List[Dict]):
+        """Draw keypoints and skeletons from the active set."""
         kpt_radius = 4
         line_width = 2
 
@@ -496,9 +525,15 @@ class COCORefinementGUI:
 
     def _toggle_view_mode(self):
         """Toggle between bbox and pose view."""
-        self.view_mode = "pose" if self.view_mode == "bbox" else "bbox"
-        self.view_mode_label.set(f"View: {self.view_mode.capitalize()}")
-        self._draw_annotations()
+        # Only toggle if not in comparison mode, or decide how it should interact
+        current_img_id = self.image_ids[self.current_idx]
+        state = self.image_decision_state.get(current_img_id, 'undecided')
+        if state != 'undecided':
+            self.view_mode = "pose" if self.view_mode == "bbox" else "bbox"
+            self.view_mode_label.set(f"View: {self.view_mode.capitalize()}")
+            self._draw_annotations() # Redraw using the active annotations
+        else:
+            messagebox.showinfo("Info", "Please choose Original ('A') or Shrunk ('D') before toggling view.")
 
     def _toggle_new_box_mode(self, event=None):
         """Toggle new box creation mode"""
@@ -512,106 +547,75 @@ class COCORefinementGUI:
 
     # --- Placeholder Interaction Handlers ---
     def _on_mouse_down(self, event):
+        # Set focus to the canvas to take it away from the Entry widget
+        self.canvas.focus_set()
+
+        # --- Check if editing is allowed ---
+        current_img_id = self.image_ids[self.current_idx]
+        state = self.image_decision_state.get(current_img_id, 'undecided')
+        if state == 'undecided':
+            print("In comparison mode. Choose 'A' or 'D' to enable editing.")
+            return # Disable mouse interactions in comparison mode
+
         print(f"Mouse Down at ({event.x}, {event.y})")
         self.drag_start = (event.x, event.y)
         self.selected_ann_id = None
         self.drag_type = None
         self.selected_corner = None
 
-        # Check if in new box creation mode first
+        # 1. Check for Handle Clicks (Highest Priority)
+        items = self.canvas.find_overlapping(
+            event.x - 2, event.y - 2, event.x + 2, event.y + 2 # Slightly larger overlap check
+        )
+        for item in reversed(items): # Check topmost first
+            tags = self.canvas.gettags(item)
+            if "handle" in tags:
+                ann_tag = next((t for t in tags if t.startswith("ann")), None)
+                corner = next((t for t in tags if t in ["topleft", "topright", "bottomleft", "bottomright"]), None)
+                if ann_tag and corner:
+                    self.selected_ann_id = int(ann_tag[3:])
+                    self.selected_corner = corner
+                    self.drag_type = "resize"
+                    print(f"Selected handle for ann {self.selected_ann_id}, corner: {self.selected_corner}")
+                    return # Found handle, stop searching
+
+        # 2. Check for Click Inside a Box (if no handle was clicked)
+        current_img_id = self.image_ids[self.current_idx]
+        annotations = self.modified_annotations.get(current_img_id, [])
+        # Iterate through annotations data, not just canvas items
+        for ann in reversed(annotations): # Check potentially overlapping boxes from top one down
+            ann_id = ann["id"]
+            bbox = ann.get("bbox")
+            if not bbox:
+                continue
+
+            # Convert bbox to canvas coordinates
+            x, y, w, h = bbox
+            x1_canvas = x * self.scale + self.offset_x
+            y1_canvas = y * self.scale + self.offset_y
+            x2_canvas = (x + w) * self.scale + self.offset_x
+            y2_canvas = (y + h) * self.scale + self.offset_y
+
+            # Check if click is strictly inside the canvas box coordinates
+            if x1_canvas < event.x < x2_canvas and y1_canvas < event.y < y2_canvas:
+                self.selected_ann_id = ann_id
+                self.drag_type = "move"
+                # Calculate offset from top-left corner for smooth dragging
+                self.drag_offset = (event.x - x1_canvas, event.y - y1_canvas)
+                print(f"Selected box interior for ann {self.selected_ann_id} for moving")
+                return # Found box interior, stop searching
+
+        # 3. Check for New Box Creation Mode
         if self.creating_new_box:
             self.drag_type = "create"
             self.new_box_start = (event.x, event.y)
             print("Starting new box creation")
             return
 
-        # Find items under cursor
-        items = self.canvas.find_overlapping(
-            event.x - 1, event.y - 1, event.x + 1, event.y + 1
-        )
-        if not items:
-            return
-
-        # Prioritize handles, then boxes
-        clicked_handle = None
-        clicked_box = None
-
-        for item in reversed(items):  # Check topmost items first
-            tags = self.canvas.gettags(item)
-            if "handle" in tags:
-                clicked_handle = item
-                break
-            elif "box" in tags:
-                clicked_box = item
-                # Don't break yet, check if a handle is on top
-
-        if clicked_handle:
-            tags = self.canvas.gettags(clicked_handle)
-            ann_tag = next((t for t in tags if t.startswith("ann")), None)
-            if ann_tag:
-                self.selected_ann_id = int(ann_tag[3:])  # Extract ann_id
-                self.drag_type = "resize"
-                # Determine which corner handle was clicked
-                coords = self.canvas.coords(clicked_handle)
-                cx = (coords[0] + coords[2]) / 2
-                cy = (coords[1] + coords[3]) / 2
-
-                # Find the corresponding box to get its corners
-                ann = self._find_annotation_by_id(self.selected_ann_id)
-                if ann and "bbox" in ann:
-                    x, y, w, h = ann["bbox"]
-                    x1 = x * self.scale + self.offset_x
-                    y1 = y * self.scale + self.offset_y
-                    x2 = (x + w) * self.scale + self.offset_x
-                    y2 = (y + h) * self.scale + self.offset_y
-
-                    # Check proximity to scaled corners
-                    if (
-                        abs(cx - x1) < self.handle_size
-                        and abs(cy - y1) < self.handle_size
-                    ):
-                        self.selected_corner = "topleft"
-                    elif (
-                        abs(cx - x2) < self.handle_size
-                        and abs(cy - y1) < self.handle_size
-                    ):
-                        self.selected_corner = "topright"
-                    elif (
-                        abs(cx - x1) < self.handle_size
-                        and abs(cy - y2) < self.handle_size
-                    ):
-                        self.selected_corner = "bottomleft"
-                    elif (
-                        abs(cx - x2) < self.handle_size
-                        and abs(cy - y2) < self.handle_size
-                    ):
-                        self.selected_corner = "bottomright"
-                    else:
-                        self.drag_type = (
-                            None  # Should not happen if handle logic is correct
-                        )
-                    print(
-                        f"Selected handle for ann {self.selected_ann_id}, corner: {self.selected_corner}"
-                    )
-                else:
-                    self.drag_type = None  # Error finding annotation
-
-        elif clicked_box:
-            tags = self.canvas.gettags(clicked_box)
-            ann_tag = next((t for t in tags if t.startswith("ann")), None)
-            if ann_tag:
-                self.selected_ann_id = int(ann_tag[3:])
-                self.drag_type = "move"
-                # Calculate offset from top-left corner for smooth dragging
-                ann = self._find_annotation_by_id(self.selected_ann_id)
-                if ann and "bbox" in ann:
-                    x, y, _, _ = ann["bbox"]
-                    x1_canvas = x * self.scale + self.offset_x
-                    y1_canvas = y * self.scale + self.offset_y
-                    self.drag_offset = (event.x - x1_canvas, event.y - y1_canvas)
-                    print(f"Selected box for ann {self.selected_ann_id} for moving")
-                else:
-                    self.drag_type = None
+        # 4. If nothing else, reset state (redundant but clear)
+        self.selected_ann_id = None
+        self.drag_type = None
+        print("Click did not hit a handle or box interior.")
 
     def _find_annotation_by_id(self, ann_id_to_find: int) -> Dict | None:
         """Helper to find an annotation dict by its ID in the current image's list."""
@@ -654,66 +658,76 @@ class COCORefinementGUI:
 
             # Get original bbox [x, y, w, h]
             x, y, w, h = ann["bbox"]
+            # Get image dimensions for clamping
+            img_info = self.image_map[ann["image_id"]]
+            img_width = img_info["width"]
+            img_height = img_info["height"]
 
             if self.drag_type == "move":
+                # Calculate proposed new top-left corner in image space
                 new_x1_canvas = event.x - self.drag_offset[0]
                 new_y1_canvas = event.y - self.drag_offset[1]
-                ann["bbox"][0] = (new_x1_canvas - self.offset_x) / self.scale
-                ann["bbox"][1] = (new_y1_canvas - self.offset_y) / self.scale
-                # Width and height remain unchanged
+                new_x_img = (new_x1_canvas - self.offset_x) / self.scale
+                new_y_img = (new_y1_canvas - self.offset_y) / self.scale
+
+                # Clamp coordinates to image boundaries
+                # Ensure top-left doesn't go past 0,0
+                new_x_img = max(0, new_x_img)
+                new_y_img = max(0, new_y_img)
+                # Ensure bottom-right doesn't go past image width/height
+                if new_x_img + w > img_width:
+                    new_x_img = img_width - w
+                if new_y_img + h > img_height:
+                    new_y_img = img_height - h
+                # Re-check top-left after potential bottom-right clamp
+                new_x_img = max(0, new_x_img)
+                new_y_img = max(0, new_y_img)
+
+                # Assign clamped coordinates (width and height remain unchanged)
+                ann["bbox"][0] = new_x_img
+                ann["bbox"][1] = new_y_img
+
             elif self.drag_type == "resize":
-                # Update bbox based on corner being dragged
-                if self.selected_corner == "topleft":
-                    new_x2 = x + w  # Bottom-right x stays
-                    new_y2 = y + h  # Bottom-right y stays
-                    x = current_x_img
-                    y = current_y_img
-                    w = new_x2 - x
-                    h = new_y2 - y
-                elif self.selected_corner == "topright":
-                    new_x1 = x  # Top-left x stays
-                    new_y2 = y + h  # Bottom-right y stays
-                    y = current_y_img
-                    w = current_x_img - new_x1
-                    h = new_y2 - y
-                elif self.selected_corner == "bottomleft":
-                    new_x2 = x + w  # Bottom-right x stays
-                    new_y1 = y  # Top-left y stays
-                    x = current_x_img
-                    w = new_x2 - x
-                    h = current_y_img - new_y1
-                elif self.selected_corner == "bottomright":
-                    new_x1 = x  # Top-left x stays
-                    new_y1 = y  # Top-left y stays
-                    w = current_x_img - new_x1
-                    h = current_y_img - new_y1
+                # Original corners in image space
+                orig_x1, orig_y1 = x, y
+                orig_x2, orig_y2 = x + w, y + h
 
-                # Update bbox ensuring w, h are positive
-                # If width/height becomes negative, swap corners and update selected_corner
-                if w < 0:
-                    x = x + w  # New x is the right edge
-                    w = abs(w)
-                    if self.selected_corner == "topleft":
-                        self.selected_corner = "topright"
-                    elif self.selected_corner == "topright":
-                        self.selected_corner = "topleft"
-                    elif self.selected_corner == "bottomleft":
-                        self.selected_corner = "bottomright"
-                    elif self.selected_corner == "bottomright":
-                        self.selected_corner = "bottomleft"
-                if h < 0:
-                    y = y + h  # New y is the bottom edge
-                    h = abs(h)
-                    if self.selected_corner == "topleft":
-                        self.selected_corner = "bottomleft"
-                    elif self.selected_corner == "bottomleft":
-                        self.selected_corner = "topleft"
-                    elif self.selected_corner == "topright":
-                        self.selected_corner = "bottomright"
-                    elif self.selected_corner == "bottomright":
-                        self.selected_corner = "topright"
+                # Proposed new corners based on drag
+                new_x, new_y = current_x_img, current_y_img
 
-                ann["bbox"] = [x, y, w, h]
+                # Determine which corner(s) to update based on selected handle
+                final_x1, final_y1, final_x2, final_y2 = orig_x1, orig_y1, orig_x2, orig_y2
+
+                if "left" in self.selected_corner:
+                    final_x1 = new_x
+                if "right" in self.selected_corner:
+                    final_x2 = new_x
+                if "top" in self.selected_corner:
+                    final_y1 = new_y
+                if "bottom" in self.selected_corner:
+                    final_y2 = new_y
+
+                # Ensure coordinates stay within image bounds
+                final_x1 = max(0, min(final_x1, img_width))
+                final_y1 = max(0, min(final_y1, img_height))
+                final_x2 = max(0, min(final_x2, img_width))
+                final_y2 = max(0, min(final_y2, img_height))
+
+                # Ensure x1 <= x2 and y1 <= y2, recalculate w, h
+                new_x = min(final_x1, final_x2)
+                new_y = min(final_y1, final_y2)
+                new_w = abs(final_x1 - final_x2)
+                new_h = abs(final_y1 - final_y2)
+
+                # Swap corner if dimensions flipped (needed for subsequent drags)
+                if final_x1 > final_x2:
+                     corner_map_h = {"topleft": "topright", "topright": "topleft", "bottomleft": "bottomright", "bottomright": "bottomleft"}
+                     self.selected_corner = corner_map_h.get(self.selected_corner)
+                if final_y1 > final_y2:
+                     corner_map_v = {"topleft": "bottomleft", "bottomleft": "topleft", "topright": "bottomright", "bottomright": "topright"}
+                     self.selected_corner = corner_map_v.get(self.selected_corner)
+
+                ann["bbox"] = [new_x, new_y, new_w, new_h]
 
             # Update derived fields like area
             ann["area"] = ann["bbox"][2] * ann["bbox"][3]
@@ -743,7 +757,7 @@ class COCORefinementGUI:
             if w > 5 and h > 5:  # Only add if reasonably sized
                 current_img_id = self.image_ids[self.current_idx]
                 new_ann = {
-                    "id": self.next_new_ann_id,
+                    "id": self.next_start_ann_id,
                     "image_id": current_img_id,
                     "category_id": self.categories[0]["id"]
                     if self.categories
@@ -758,7 +772,7 @@ class COCORefinementGUI:
                     "num_keypoints": 0,
                 }
                 self.modified_annotations.setdefault(current_img_id, []).append(new_ann)
-                self.next_new_ann_id += 1
+                self.next_start_ann_id += 1
                 self.modifications_made = True
                 self._draw_annotations()  # Redraw with the new box
 
@@ -780,6 +794,13 @@ class COCORefinementGUI:
             del self.temp_rect_id
 
     def _on_right_click(self, event):
+        # --- Check if editing is allowed ---
+        current_img_id = self.image_ids[self.current_idx]
+        state = self.image_decision_state.get(current_img_id, 'undecided')
+        if state == 'undecided':
+            print("In comparison mode. Choose 'A' or 'D' to enable deletion.")
+            return # Disable right-click delete in comparison mode
+
         print(f"Right Click at ({event.x}, {event.y})")
 
         items = self.canvas.find_overlapping(
@@ -814,8 +835,46 @@ class COCORefinementGUI:
             self._draw_annotations()  # Redraw the canvas
 
     # --- Navigation and Control ---
+    def _jump_to_image(self, event=None):
+        """Attempts to jump to the image number entered in the jumper Entry."""
+        try:
+            entry_text = self.image_jumper_var.get()
+            target_num_str = entry_text.split('/')[0].strip()
+            target_num = int(target_num_str)
+            total_images = len(self.image_ids)
+
+            if 1 <= target_num <= total_images:
+                target_idx = target_num - 1
+                if target_idx != self.current_idx:
+                    # Check for unsaved changes before jumping?
+                    # For now, let's assume jump implies potential context switch
+                    # self._save_changes_if_needed() # Optional: prompt/save like next/prev
+                    print(f"Jumping to image {target_num} (index {target_idx})...")
+                    self.current_idx = target_idx
+                    self._load_current_image()
+                else:
+                    # If already on the target image, just reset the text format
+                    self._update_jumper_text()
+            else:
+                messagebox.showwarning("Invalid Image Number", f"Please enter a number between 1 and {total_images}.")
+                self._update_jumper_text() # Reset text to current index
+        except ValueError:
+            messagebox.showwarning("Invalid Input", "Please enter the image number (e.g., '100').")
+            self._update_jumper_text() # Reset text to current index
+        except Exception as e:
+            messagebox.showerror("Error Jumping", f"An unexpected error occurred: {e}")
+            self._update_jumper_text()
+
+    def _update_jumper_text(self):
+        """Helper to reset the jumper text to the current image index."""
+        total_images = len(self.image_ids)
+        counter_text = f"{self.current_idx + 1} / {total_images}"
+        self.image_jumper_var.set(counter_text)
+
     def _prev_image(self):
         if self.image_ids:
+            # Save changes before moving?
+            # self._save_changes_if_needed() # Optional
             next_idx = self._find_valid_index(-1)
             if next_idx != -1 and next_idx != self.current_idx:
                 self.current_idx = next_idx
@@ -855,15 +914,21 @@ class COCORefinementGUI:
     def _on_close_window(self):
         """Handle clicking the window's close button."""
         if self.modifications_made:
-            if messagebox.askyesno(
+            # Use askyesnocancel to allow cancelling the close operation
+            response = messagebox.askyesnocancel(
                 "Unsaved Changes", "You have unsaved changes. Save before closing?"
-            ):
+            )
+            if response is True: # Yes
                 self._save_refined_annotations()
                 if hasattr(self, "save_successful") and self.save_successful:
                     self.root.destroy()
                 # else: stay open if save failed
-            else:
+            elif response is False: # No
+                print("Discarding changes and closing.")
                 self.root.destroy()  # Discard changes
+            # else: response is None (Cancel), do nothing
+            else:
+                print("Close operation cancelled.")
         else:
             self.root.destroy()
 
@@ -888,6 +953,23 @@ class COCORefinementGUI:
         print(
             f"Keeping {len(final_image_ids)} images out of {len(self.image_ids)} total."
         )
+
+        # Check if any images remain undecided
+        undecided_images = [
+            img_id for img_id in final_image_ids
+            if self.image_decision_state.get(img_id) == 'undecided'
+        ]
+        if undecided_images:
+            msg = (
+                f"Warning: {len(undecided_images)} images have not had a decision made "
+                "(Original vs Shrunk):\n" + ", ".join(map(str, undecided_images[:10])) + ("..." if len(undecided_images) > 10 else "") +
+                "\n\nAnnotations for these images will be saved based on their current state "
+                "(likely the original). Continue saving?"
+             )
+            if not messagebox.askyesno("Undecided Images", msg):
+                print("Save cancelled by user due to undecided images.")
+                self.save_successful = False
+                return # Abort save
 
         # Add image info for non-deleted images
         for img_id in self.image_ids:
@@ -927,6 +1009,49 @@ class COCORefinementGUI:
             messagebox.showerror("Save Error", f"Failed to save annotations:\n{e}")
             self.save_successful = False
 
+    def _save_temp_progress(self, event=None):
+        """Saves current progress to the output file without closing."""
+        print("Attempting temporary save...")
+        self._save_refined_annotations() # Use the main save function
+        if hasattr(self, "save_successful") and self.save_successful:
+            print("Temporary save successful.")
+            self.modifications_made = False # Reset modification flag after successful save
+        else:
+            print("Temporary save failed.")
+            # Optionally provide more feedback
+            messagebox.showwarning("Save Failed", "Could not save temporary progress.")
+
+    # --- Hotkey Decision Methods ---
+    def _accept_original(self, event=None):
+        """Handles the 'A' key press to keep the original annotations."""
+        current_img_id = self.image_ids[self.current_idx]
+        if self.image_decision_state.get(current_img_id) == 'undecided':
+            print(f"Image {current_img_id}: Keeping ORIGINAL annotations.")
+            self.image_decision_state[current_img_id] = 'original'
+            # Deep copy original annotations into the active modified set for this image
+            self.modified_annotations[current_img_id] = copy.deepcopy(
+                self.original_annotations.get(current_img_id, [])
+            )
+            self.modifications_made = True # Mark that a decision was made
+            self._draw_annotations() # Redraw in active mode
+        else:
+            print(f"Decision already made for image {current_img_id}.")
+
+    def _accept_shrunk(self, event=None):
+        """Handles the 'D' key press to keep the shrunk annotations."""
+        current_img_id = self.image_ids[self.current_idx]
+        if self.image_decision_state.get(current_img_id) == 'undecided':
+            print(f"Image {current_img_id}: Keeping SHRUNK annotations.")
+            self.image_decision_state[current_img_id] = 'shrunk'
+            # Deep copy shrunk annotations into the active modified set for this image
+            self.modified_annotations[current_img_id] = copy.deepcopy(
+                self.shrunk_annotations.get(current_img_id, [])
+            )
+            self.modifications_made = True # Mark that a decision was made
+            self._draw_annotations() # Redraw in active mode
+        else:
+            print(f"Decision already made for image {current_img_id}.")
+
     def run(self):
         """Start the Tkinter main loop."""
         if not self.image_ids:
@@ -939,26 +1064,95 @@ class COCORefinementGUI:
 # --- Main Execution ---
 
 if __name__ == "__main__":
-    setup_result = launch_setup_dialog()
+    parser = argparse.ArgumentParser(description="Interactively refine COCO bounding boxes and poses.")
+    parser.add_argument("--img_dir", required=True, help="Path to the directory containing images.")
+    parser.add_argument("--coco_path", required=True, help="Path to the COCO annotation JSON file.")
+    parser.add_argument("--shrink", type=float, default=None, help="Optional percentage (0-100) to shrink boxes. If provided, starts in comparison mode.")
+    parser.add_argument("--view_mode", default="bbox", choices=["bbox", "pose"], help="Initial view mode ('bbox' or 'pose').")
 
-    if setup_result:
-        img_dir, coco_path, view_mode = setup_result
-        print(f"Image Dir: {img_dir}")
-        print(f"COCO Path: {coco_path}")
-        print(f"Initial View: {view_mode}")
+    args = parser.parse_args()
 
-        image_data, anno_data, category_data, next_ann_id = load_coco_data(
-            coco_path, img_dir
-        )
+    # Validate shrink percentage if provided
+    if args.shrink is not None and not (0 < args.shrink < 100):
+        print(f"Error: --shrink value must be between 0 and 100 (exclusive). Got {args.shrink}")
+        exit(1)
 
-        if image_data is not None:
-            print("Launching Refinement GUI...")
-            gui = COCORefinementGUI(
-                image_data, anno_data, category_data, view_mode, coco_path, next_ann_id
-            )
-            gui.run()
-            print("GUI Closed.")
-        else:
-            print("Failed to load COCO data. Exiting.")
+    # Use args directly
+    img_dir = args.img_dir
+    coco_path = args.coco_path
+    view_mode = args.view_mode
+    shrink_percentage = args.shrink # Will be None if not provided
+
+    print(f"Image Dir: {img_dir}")
+    print(f"COCO Path: {coco_path}")
+    print(f"Initial View: {view_mode}")
+    if shrink_percentage is not None:
+        print(f"Shrink Percentage: {shrink_percentage}%")
     else:
-        print("Setup cancelled.")
+        print("Shrinking: Not requested.")
+
+
+    image_data, anno_data, category_data, next_ann_id = load_coco_data(
+        coco_path, img_dir
+    )
+
+    if image_data is not None:
+        shrunk_anno_data = None # Initialize
+        perform_shrink_comparison = shrink_percentage is not None
+
+        if perform_shrink_comparison:
+            print(f"Calculating shrunk annotations ({shrink_percentage}%)...")
+            # We need the full coco structure temporarily for calculate_shrunk_bboxes
+            temp_coco_data_for_shrinking = {
+                "images": [
+                    {
+                        "id": img_id, "width": info["width"], "height": info["height"],
+                         "file_name": info["file_name"]
+                    } for img_id, info in image_data.items()
+                ],
+                "annotations": [
+                    ann for anns_list in anno_data.values() for ann in anns_list
+                ],
+                "categories": category_data # Pass categories if needed by shrink logic
+            }
+            try:
+                shrunk_full_coco_data, _ = calculate_shrunk_bboxes(
+                    temp_coco_data_for_shrinking, shrink_percentage
+                )
+                # Re-map the shrunk annotations back to the dictionary format needed by the GUI
+                shrunk_anno_data = {img_id: [] for img_id in image_data}
+                for ann in shrunk_full_coco_data.get("annotations", []):
+                    img_id = ann["image_id"]
+                    if img_id in shrunk_anno_data:
+                        shrunk_anno_data[img_id].append(ann)
+                print("Shrunk annotation calculation complete.")
+            except Exception as e:
+                messagebox.showerror("Shrinking Error", f"Failed to calculate shrunk boxes: {e}")
+                print(f"Error during shrinking calculation: {e}")
+                # Exit if shrinking was requested but failed?
+                print("Exiting due to shrinking error.")
+                exit(1)
+                # shrunk_anno_data = copy.deepcopy(anno_data) # Fallback to original
+                # messagebox.showwarning("Shrinking Error", "Proceeding with original boxes only.")
+                # perform_shrink_comparison = False # Turn off comparison if shrinking failed
+        else:
+             # If not shrinking, create a placeholder (or could use None)
+             # The GUI __init__ will handle this case.
+             shrunk_anno_data = {} # Or copy.deepcopy(anno_data) if needed as fallback
+
+        # --- End Shrinking Step ---
+
+        print("Launching Refinement GUI...")
+        gui = COCORefinementGUI(
+            image_data,
+            anno_data, # Pass original annotations
+            shrunk_anno_data if perform_shrink_comparison else {}, # Pass empty dict if not comparing
+            category_data,
+            view_mode,
+            coco_path,
+            next_ann_id,
+        )
+        gui.run()
+        print("GUI Closed.")
+    else:
+        print("Failed to load COCO data. Exiting.")
