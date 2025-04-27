@@ -120,6 +120,8 @@ if train_path:
 
 ## Next Steps
 
+* Modify cvu to make image_dir, image_id optional
+* Add coco-data loading fxn
 *   **Testing:** Add unit tests for core utility functions (especially merging and splitting logic).
 *   **Error Handling:** Enhance error handling and reporting in file operations (e.g., provide more detail on skipping malformed annotations/images).
 *   **Documentation:** Expand function docstrings with more detail on parameters and potential edge cases. Consider generating Sphinx documentation.
