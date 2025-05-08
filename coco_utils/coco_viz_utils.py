@@ -220,15 +220,18 @@ def visualize_keypoints(
         for k in range(0, len(keypoints), 3):
             x, y, v = keypoints[k], keypoints[k+1], keypoints[k+2]
             kp_coords_vis.append((x, y, v))
+            
             # v=0: not labeled, v=1: labeled but not visible, v=2: labeled and visible
-            if v > 0: # Draw if labeled, could differentiate based on visibility if needed
-                 if v == 2: num_visible += 1
-                 # Draw an ellipse (circle) for the keypoint
-                 draw.ellipse(
-                    (x - point_radius, y - point_radius, x + point_radius, y + point_radius),
-                    fill=color,
-                    outline=color # Use same color for outline unless distinction needed
-                 )
+            # We still count 'num_visible' for the printout based on v=2
+            if v == 2: 
+                num_visible += 1
+            
+            # Always attempt to draw the keypoint using its x, y coordinates
+            draw.ellipse(
+                (x - point_radius, y - point_radius, x + point_radius, y + point_radius),
+                fill=color,
+                outline=color
+            )
         print(f"    Drawn {num_visible} visible keypoints (out of {len(kp_coords_vis)} total labeled points).")
 
 
