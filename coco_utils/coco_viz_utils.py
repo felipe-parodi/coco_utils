@@ -119,10 +119,11 @@ def visualize_bbox(
 def visualize_keypoints(
     coco_data: Dict,
     image_id: int,
-    image_dir: str,
+    image_dir: Optional[str] = None,
+    image_root_dir: Optional[str] = None,
     point_colors: List[str] = ["blue", "red", "green"],
     point_radius: int = 5,
-    skeleton_color: str = "white",
+    skeleton_color: str = "black",
     line_width: int = 2,
 ) -> None:
     """Visualizes keypoints and skeleton for a given image_id in COCO format.
@@ -135,6 +136,7 @@ def visualize_keypoints(
         coco_data: Loaded COCO data as a Python dictionary.
         image_id: The ID of the image to visualize.
         image_dir: The directory containing the image files.
+        image_root_dir: The root directory to search for images recursively.
         point_colors: List of colors to cycle through for different individuals.
         point_radius: Radius of the drawn keypoints.
         skeleton_color: Color for the skeleton lines.
@@ -164,15 +166,26 @@ def visualize_keypoints(
     if not image_filename:
          print(f"Error: 'file_name' missing for image ID {image_id}.")
          return
-    image_path = os.path.join(image_dir, image_filename)
+
+    image_path_resolved: Optional[str] = None
+    if image_root_dir:
+        image_path_resolved = _find_image_path_recursively(image_root_dir, image_filename)
+        if not image_path_resolved:
+            print(f"Error: Image file '{image_filename}' not found recursively under '{image_root_dir}'.")
+            return
+    elif image_dir:
+        image_path_resolved = os.path.join(image_dir, image_filename)
+    else:
+        print("Error: Either 'image_dir' or 'image_root_dir' must be provided for visualize_keypoints.")
+        return
 
     try:
-        img = Image.open(image_path).convert("RGB")
+        img = Image.open(image_path_resolved).convert("RGB")
     except FileNotFoundError:
-        print(f"Error: Image file not found at '{image_path}'")
+        print(f"Error: Image file not found at '{image_path_resolved}'")
         return
     except Exception as e:
-        print(f"Error loading image '{image_path}': {e}")
+        print(f"Error loading image '{image_path_resolved}': {e}")
         return
 
     draw = ImageDraw.Draw(img)
@@ -250,3 +263,10 @@ def visualize_keypoints(
     plt.title(f"Image: {image_filename} (ID: {image_id}) | Keypoints ({num_individuals_to_draw} individuals)")
     plt.axis('off')
     plt.show()
+
+def _find_image_path_recursively(root_dir: str, image_filename: str) -> Optional[str]:
+    """Recursively searches for image_filename within root_dir."""
+    for dirpath, _, filenames in os.walk(root_dir):
+        if image_filename in filenames:
+            return os.path.join(dirpath, image_filename)
+    return None
