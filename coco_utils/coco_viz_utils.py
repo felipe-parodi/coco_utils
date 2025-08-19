@@ -1,275 +1,361 @@
-"""
-COCO Visualization Utilities.
+"""COCO Visualization Utilities.
 
 This module provides functions to visualize COCO dataset annotations,
 including bounding boxes and keypoints, on their corresponding images.
-It depends on PIL (Pillow) and Matplotlib.
 """
 
-import json
 import os
-from PIL import Image, ImageDraw
-import matplotlib.pyplot as plt
-from typing import Dict, List, Optional, Tuple
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Union
 
-def find_image_info(data: Dict, image_id: int) -> Optional[Dict]:
-    """Finds the image dictionary for a given image_id.
+import matplotlib.pyplot as plt
+from PIL import Image, ImageDraw
+
+from .exceptions import ImageNotFoundError, VisualizationError
+from .logger import get_logger
+
+logger = get_logger(__name__)
+
+
+def find_image_info(coco_data: Dict[str, Any], image_id: int) -> Optional[Dict[str, Any]]:
+    """Find the image dictionary for a given image ID.
 
     Args:
-        data: The loaded COCO dataset dictionary.
+        coco_data: The loaded COCO dataset dictionary containing 'images' key.
         image_id: The ID of the image to find.
 
     Returns:
-        The dictionary containing image info, or None if not found.
+        The dictionary containing image information, or None if not found.
+
+    Examples:
+        >>> coco_data = {"images": [{"id": 1, "file_name": "img.jpg"}]}
+        >>> find_image_info(coco_data, 1)
+        {"id": 1, "file_name": "img.jpg"}
     """
-    for img_info in data.get('images', []):
-        if img_info['id'] == image_id:
+    for img_info in coco_data.get("images", []):
+        if img_info.get("id") == image_id:
             return img_info
     return None
 
-def find_annotations(data: Dict, image_id: int) -> List[Dict]:
-    """Finds all annotations for a given image_id.
+
+def find_annotations(coco_data: Dict[str, Any], image_id: int) -> List[Dict[str, Any]]:
+    """Find all annotations for a given image ID.
 
     Args:
-        data: The loaded COCO dataset dictionary.
+        coco_data: The loaded COCO dataset dictionary containing 'annotations' key.
         image_id: The ID of the image whose annotations are sought.
 
     Returns:
         A list of annotation dictionaries for the given image_id.
+        Returns empty list if no annotations found.
+
+    Examples:
+        >>> coco_data = {"annotations": [{"id": 1, "image_id": 1, "bbox": [10, 10, 50, 50]}]}
+        >>> find_annotations(coco_data, 1)
+        [{"id": 1, "image_id": 1, "bbox": [10, 10, 50, 50]}]
     """
-    return [ann for ann in data.get('annotations', []) if ann['image_id'] == image_id]
+    return [
+        ann for ann in coco_data.get("annotations", []) 
+        if ann.get("image_id") == image_id
+    ]
+
 
 def visualize_bbox(
-    coco_data: Dict,
+    coco_data: Dict[str, Any],
     image_id: int,
-    image_dir: str,
+    image_dir: Union[str, Path],
     box_color: str = "red",
     box_width: int = 3,
-) -> None:
-    """Visualizes **all** bounding boxes found for a given image_id.
+    figsize: Tuple[int, int] = (10, 10),
+    show_plot: bool = True,
+) -> Optional[Image.Image]:
+    """Visualize all bounding boxes for a given image ID.
+
+    Draws all bounding boxes found in annotations for the specified image
+    and displays the result using matplotlib.
 
     Args:
-        coco_data: Loaded COCO data as a Python dictionary.
+        coco_data: Loaded COCO data as a dictionary containing 'images' and 'annotations'.
         image_id: The ID of the image to visualize.
-        image_dir: The directory containing the image files referenced in coco_data.
-        box_color: Color for the bounding box outlines.
-        box_width: Width of the bounding box outlines.
+        image_dir: Directory containing the image files referenced in coco_data.
+        box_color: Color for the bounding box outlines. Default is "red".
+        box_width: Width of the bounding box outlines in pixels. Default is 3.
+        figsize: Figure size for matplotlib display as (width, height). Default is (10, 10).
+        show_plot: If True, displays the plot. If False, returns the image. Default is True.
+
+    Returns:
+        PIL Image object with drawn bounding boxes if show_plot is False, None otherwise.
+
+    Raises:
+        ImageNotFoundError: If the image file cannot be found.
+        VisualizationError: If visualization fails due to invalid data.
+
+    Examples:
+        >>> coco_data = load_coco_data("annotations.json")
+        >>> visualize_bbox(coco_data, image_id=1, image_dir="./images")
     """
+    image_dir = Path(image_dir)
+    
+    # Find image information
     img_info = find_image_info(coco_data, image_id)
     if not img_info:
-        print(f"Error: Image with ID {image_id} not found in coco_data['images'].")
-        return
+        logger.warning(f"Image with ID {image_id} not found in coco_data['images']")
+        raise VisualizationError(f"Image with ID {image_id} not found")
 
+    # Get annotations
     annotations = find_annotations(coco_data, image_id)
     if not annotations:
-        print(f"Warning: No annotations found for image ID {image_id}.")
+        logger.info(f"No annotations found for image ID {image_id}")
 
-    image_filename = img_info.get('file_name')
+    # Get image file path
+    image_filename = img_info.get("file_name")
     if not image_filename:
-        print(f"Error: 'file_name' missing for image ID {image_id}.")
-        return
-    image_path = os.path.join(image_dir, image_filename)
+        logger.error(f"'file_name' missing for image ID {image_id}")
+        raise VisualizationError(f"'file_name' missing for image ID {image_id}")
+    
+    image_path = image_dir / image_filename
 
+    # Load image
     try:
         img = Image.open(image_path).convert("RGB")
+        logger.debug(f"Successfully loaded image from {image_path}")
     except FileNotFoundError:
-        print(f"Error: Image file not found at '{image_path}'")
-        return
+        logger.error(f"Image file not found at '{image_path}'")
+        raise ImageNotFoundError(f"Image file not found at '{image_path}'")
     except Exception as e:
-        print(f"Error loading image '{image_path}': {e}")
-        return
+        logger.error(f"Error loading image '{image_path}': {e}")
+        raise VisualizationError(f"Error loading image: {e}")
 
+    # Draw bounding boxes
     draw = ImageDraw.Draw(img)
     num_boxes_drawn = 0
 
-    # Iterate through all annotations found for this image
     for annotation in annotations:
-        ann_id = annotation.get('id', 'N/A')
-        bbox = annotation.get('bbox') # COCO format: [x_min, y_min, width, height]
+        ann_id = annotation.get("id", "N/A")
+        bbox = annotation.get("bbox")  # COCO format: [x_min, y_min, width, height]
 
         if bbox and len(bbox) == 4:
             x_min, y_min, width, height = bbox
-            # PIL draw.rectangle expects [x0, y0, x1, y1]
+            
+            # Convert to PIL format [x0, y0, x1, y1]
             x_max = x_min + width
             y_max = y_min + height
-            draw.rectangle([x_min, y_min, x_max, y_max], outline=box_color, width=box_width)
-            print(f"Drawing bbox {bbox} for annotation ID {ann_id} on image ID {image_id}.")
+            
+            draw.rectangle(
+                [x_min, y_min, x_max, y_max], 
+                outline=box_color, 
+                width=box_width
+            )
+            logger.debug(f"Drew bbox {bbox} for annotation ID {ann_id}")
             num_boxes_drawn += 1
-        else:
-            # Only print warning if an annotation exists but lacks a valid bbox
-            if 'bbox' in annotation:
-                print(f"Warning: Bounding box invalid for annotation ID {ann_id} on image ID {image_id}.")
-            # If 'bbox' key doesn't even exist, perhaps it's a keypoints-only annotation, no warning needed.
+        elif "bbox" in annotation:
+            logger.warning(f"Invalid bounding box for annotation ID {ann_id}")
 
+    logger.info(f"Drew {num_boxes_drawn} bounding box(es) for image ID {image_id}")
 
-    if num_boxes_drawn == 0 and annotations:
-         print(f"Warning: Found {len(annotations)} annotations for image ID {image_id}, but none had valid bounding boxes.")
-    elif num_boxes_drawn == 0 and not annotations:
-         print(f"Image ID {image_id} has no annotations.") # Message adjusted from earlier check
+    # Display or return image
+    if show_plot:
+        plt.figure(figsize=figsize)
+        plt.imshow(img)
+        title = f"Image: {image_filename} (ID: {image_id}) | {num_boxes_drawn} Bounding Box(es)"
+        plt.title(title)
+        plt.axis("off")
+        plt.show()
+        return None
+    else:
+        return img
 
-
-    # Display the image
-    plt.figure(figsize=(10, 10))
-    plt.imshow(img)
-    title = f"Image: {image_filename} (ID: {image_id}) | {num_boxes_drawn} Bounding Box(es)"
-    plt.title(title)
-    plt.axis('off')
-    plt.show()
 
 def visualize_keypoints(
-    coco_data: Dict,
+    coco_data: Dict[str, Any],
     image_id: int,
-    image_dir: Optional[str] = None,
-    image_root_dir: Optional[str] = None,
-    point_colors: List[str] = ["blue", "red", "green"],
-    point_radius: int = 5,
-    skeleton_color: str = "black",
-    line_width: int = 2,
-) -> None:
-    """Visualizes keypoints and skeleton for a given image_id in COCO format.
+    image_dir: Optional[Union[str, Path]] = None,
+    image_root_dir: Optional[Union[str, Path]] = None,
+    keypoint_color: Union[str, List[str]] = "blue",
+    keypoint_radius: int = 5,
+    skeleton_color: str = "yellow",
+    skeleton_width: int = 2,
+    figsize: Tuple[int, int] = (12, 12),
+    show_plot: bool = True,
+) -> Optional[Image.Image]:
+    """Visualize keypoints and skeleton for a given image ID.
 
-    Uses specified colors (default: blue, red, green) for keypoints of the
-    first few detected individuals (up to len(point_colors)).
-    Draws skeleton connections if defined in categories.
+    Draws keypoints and skeleton connections (if defined) for all individuals
+    detected in the image annotations.
 
     Args:
-        coco_data: Loaded COCO data as a Python dictionary.
+        coco_data: Loaded COCO data dictionary containing 'images', 'annotations', and 'categories'.
         image_id: The ID of the image to visualize.
-        image_dir: The directory containing the image files.
-        image_root_dir: The root directory to search for images recursively.
-        point_colors: List of colors to cycle through for different individuals.
-        point_radius: Radius of the drawn keypoints.
-        skeleton_color: Color for the skeleton lines.
-        line_width: Width of the skeleton lines.
+        image_dir: Directory containing the image files. Either this or image_root_dir must be provided.
+        image_root_dir: Root directory to search for images recursively. Either this or image_dir must be provided.
+        keypoint_color: Color(s) for keypoints. Can be a single color or list of colors for multiple individuals.
+        keypoint_radius: Radius of the drawn keypoints in pixels. Default is 5.
+        skeleton_color: Color for the skeleton connections. Default is "yellow".
+        skeleton_width: Width of the skeleton lines in pixels. Default is 2.
+        figsize: Figure size for matplotlib display as (width, height). Default is (12, 12).
+        show_plot: If True, displays the plot. If False, returns the image. Default is True.
+
+    Returns:
+        PIL Image object with drawn keypoints if show_plot is False, None otherwise.
+
+    Raises:
+        ValueError: If neither image_dir nor image_root_dir is provided.
+        ImageNotFoundError: If the image file cannot be found.
+        VisualizationError: If visualization fails due to invalid data.
+
+    Examples:
+        >>> coco_data = load_coco_data("keypoints.json")
+        >>> visualize_keypoints(coco_data, image_id=1, image_dir="./images")
     """
+    # Validate input
+    if image_dir is None and image_root_dir is None:
+        raise ValueError("Either 'image_dir' or 'image_root_dir' must be provided")
+
+    # Convert to Path objects
+    if image_dir is not None:
+        image_dir = Path(image_dir)
+    if image_root_dir is not None:
+        image_root_dir = Path(image_root_dir)
+
+    # Ensure keypoint_color is a list
+    if isinstance(keypoint_color, str):
+        keypoint_colors = [keypoint_color]
+    else:
+        keypoint_colors = keypoint_color
+
+    # Find image information
     img_info = find_image_info(coco_data, image_id)
     if not img_info:
-        print(f"Error: Image with ID {image_id} not found.")
-        return
+        logger.warning(f"Image with ID {image_id} not found")
+        raise VisualizationError(f"Image with ID {image_id} not found")
 
+    # Get annotations with keypoints
     annotations = find_annotations(coco_data, image_id)
-    if not annotations:
-        print(f"Error: No annotations found for image ID {image_id}.")
-        return
-
-    # Filter annotations that actually have keypoints
     keypoint_annotations = [
         ann for ann in annotations
-        if 'keypoints' in ann and ann.get('num_keypoints', 0) > 0
+        if "keypoints" in ann and ann.get("num_keypoints", 0) > 0
     ]
+    
     if not keypoint_annotations:
-        print(f"Warning: No annotations *with keypoints* found for image ID {image_id}.")
-        # Optionally, still show the image? For now, we return.
-        return
+        logger.warning(f"No annotations with keypoints found for image ID {image_id}")
+        # Still visualize the image without keypoints
+        annotations = []
 
-    image_filename = img_info.get('file_name')
+    # Get image file path
+    image_filename = img_info.get("file_name")
     if not image_filename:
-         print(f"Error: 'file_name' missing for image ID {image_id}.")
-         return
+        logger.error(f"'file_name' missing for image ID {image_id}")
+        raise VisualizationError(f"'file_name' missing for image ID {image_id}")
 
-    image_path_resolved: Optional[str] = None
+    # Resolve image path
     if image_root_dir:
-        image_path_resolved = _find_image_path_recursively(image_root_dir, image_filename)
-        if not image_path_resolved:
-            print(f"Error: Image file '{image_filename}' not found recursively under '{image_root_dir}'.")
-            return
-    elif image_dir:
-        image_path_resolved = os.path.join(image_dir, image_filename)
+        image_path = _find_image_recursively(image_root_dir, image_filename)
+        if not image_path:
+            logger.error(f"Image '{image_filename}' not found under '{image_root_dir}'")
+            raise ImageNotFoundError(f"Image '{image_filename}' not found")
     else:
-        print("Error: Either 'image_dir' or 'image_root_dir' must be provided for visualize_keypoints.")
-        return
+        image_path = image_dir / image_filename
 
+    # Load image
     try:
-        img = Image.open(image_path_resolved).convert("RGB")
+        img = Image.open(image_path).convert("RGB")
+        logger.debug(f"Successfully loaded image from {image_path}")
     except FileNotFoundError:
-        print(f"Error: Image file not found at '{image_path_resolved}'")
-        return
+        logger.error(f"Image file not found at '{image_path}'")
+        raise ImageNotFoundError(f"Image file not found at '{image_path}'")
     except Exception as e:
-        print(f"Error loading image '{image_path_resolved}': {e}")
-        return
+        logger.error(f"Error loading image '{image_path}': {e}")
+        raise VisualizationError(f"Error loading image: {e}")
 
     draw = ImageDraw.Draw(img)
 
-    # Attempt to find skeleton definition from categories
+    # Get skeleton definition from categories
     skeleton = None
-    category_id = keypoint_annotations[0].get('category_id') # Assume all keypoint annotations for an image share a category ID
-    if category_id is not None:
-        for cat in coco_data.get('categories', []):
-            if cat['id'] == category_id:
-                skeleton = cat.get('skeleton') # COCO skeleton: list of [idx1, idx2] (1-based)
-                keypoint_names = cat.get('keypoints') # List of keypoint names
-                print(f"Found category '{cat.get('name', 'N/A')}' (ID: {category_id}) with {len(keypoint_names)} keypoints and {len(skeleton) if skeleton else 0} skeleton connections.")
-                break
-        if not skeleton:
-             print(f"Warning: Skeleton not defined in category ID {category_id}.")
+    keypoint_names = None
+    if keypoint_annotations:
+        category_id = keypoint_annotations[0].get("category_id")
+        if category_id is not None:
+            for cat in coco_data.get("categories", []):
+                if cat.get("id") == category_id:
+                    skeleton = cat.get("skeleton")  # List of [idx1, idx2] (1-based)
+                    keypoint_names = cat.get("keypoints")  # List of keypoint names
+                    logger.debug(
+                        f"Found category '{cat.get('name', 'N/A')}' with "
+                        f"{len(keypoint_names) if keypoint_names else 0} keypoints"
+                    )
+                    break
 
-    num_individuals_to_draw = min(len(keypoint_annotations), len(point_colors))
-    print(f"Visualizing keypoints for {num_individuals_to_draw} individual(s) out of {len(keypoint_annotations)} found.")
+    # Draw keypoints for each individual
+    for i, ann in enumerate(keypoint_annotations):
+        keypoints = ann.get("keypoints")  # Format: [x1, y1, v1, x2, y2, v2, ...]
+        if not keypoints:
+            continue
 
-    for i, ann in enumerate(keypoint_annotations[:num_individuals_to_draw]):
-        keypoints = ann.get('keypoints') # Format: [x1, y1, v1, x2, y2, v2, ...]
-        if not keypoints: continue
+        color = keypoint_colors[i % len(keypoint_colors)]
+        ann_id = ann.get("id", "N/A")
+        logger.debug(f"Drawing keypoints for annotation {ann_id} with color {color}")
 
-        color = point_colors[i % len(point_colors)]
-        ann_id = ann.get('id', 'N/A')
-        print(f"  Individual {i+1} (Ann ID: {ann_id}): Color {color}")
-
-        kp_coords_vis = [] # Store (x, y, v) for drawing skeleton
-        num_visible = 0
-        # Draw individual keypoints first
+        # Parse and draw keypoints
+        kp_coords = []  # Store (x, y, visibility) for skeleton drawing
         for k in range(0, len(keypoints), 3):
-            x, y, v = keypoints[k], keypoints[k+1], keypoints[k+2]
-            kp_coords_vis.append((x, y, v))
+            x, y, v = keypoints[k], keypoints[k + 1], keypoints[k + 2]
+            kp_coords.append((x, y, v))
             
             # v=0: not labeled, v=1: labeled but not visible, v=2: labeled and visible
-            # We still count 'num_visible' for the printout based on v=2
-            if v == 2: 
-                num_visible += 1
-            
-            # Always attempt to draw the keypoint using its x, y coordinates
-            draw.ellipse(
-                (x - point_radius, y - point_radius, x + point_radius, y + point_radius),
-                fill=color,
-                outline=color
-            )
-        print(f"    Drawn {num_visible} visible keypoints (out of {len(kp_coords_vis)} total labeled points).")
+            if v > 0:  # Draw if labeled
+                draw.ellipse(
+                    (x - keypoint_radius, y - keypoint_radius, 
+                     x + keypoint_radius, y + keypoint_radius),
+                    fill=color,
+                    outline=color
+                )
 
-
-        # Draw skeleton connections for this individual
-        if skeleton:
-            connections_drawn = 0
-            for conn_idx, connection in enumerate(skeleton):
-                # COCO uses 1-based indexing for skeleton points
-                kp_idx1 = connection[0] - 1
-                kp_idx2 = connection[1] - 1
-
-                # Check if indices are valid for the current keypoint list length
-                if 0 <= kp_idx1 < len(kp_coords_vis) and 0 <= kp_idx2 < len(kp_coords_vis):
-                    x1, y1, v1 = kp_coords_vis[kp_idx1]
-                    x2, y2, v2 = kp_coords_vis[kp_idx2]
-
-                    # Draw connection only if *both* keypoints are at least labeled (v>0)
-                    # Stronger condition: only if both are visible (v==2) might be desired too.
+        # Draw skeleton connections
+        if skeleton and kp_coords:
+            for connection in skeleton:
+                # COCO uses 1-based indexing for skeleton
+                idx1 = connection[0] - 1
+                idx2 = connection[1] - 1
+                
+                if 0 <= idx1 < len(kp_coords) and 0 <= idx2 < len(kp_coords):
+                    x1, y1, v1 = kp_coords[idx1]
+                    x2, y2, v2 = kp_coords[idx2]
+                    
+                    # Draw connection if both keypoints are labeled
                     if v1 > 0 and v2 > 0:
-                        draw.line([(x1, y1), (x2, y2)], fill=skeleton_color, width=line_width)
-                        connections_drawn += 1
-                else:
-                    print(f"    Warning: Invalid skeleton connection indices {connection} for keypoint list length {len(kp_coords_vis)}.")
-            print(f"    Drawn {connections_drawn} skeleton connections.")
-        elif i == 0: # Only print skeleton warning once
-             print("    Skipping skeleton drawing as 'skeleton' definition was not found in categories.")
+                        draw.line(
+                            [(x1, y1), (x2, y2)], 
+                            fill=skeleton_color, 
+                            width=skeleton_width
+                        )
+
+    num_individuals = len(keypoint_annotations)
+    logger.info(f"Visualized keypoints for {num_individuals} individual(s)")
+
+    # Display or return image
+    if show_plot:
+        plt.figure(figsize=figsize)
+        plt.imshow(img)
+        title = f"Image: {image_filename} (ID: {image_id}) | {num_individuals} Individual(s)"
+        plt.title(title)
+        plt.axis("off")
+        plt.show()
+        return None
+    else:
+        return img
 
 
-    # Display the image
-    plt.figure(figsize=(12, 12))
-    plt.imshow(img)
-    plt.title(f"Image: {image_filename} (ID: {image_id}) | Keypoints ({num_individuals_to_draw} individuals)")
-    plt.axis('off')
-    plt.show()
+def _find_image_recursively(root_dir: Path, filename: str) -> Optional[Path]:
+    """Recursively search for a file within a directory tree.
 
-def _find_image_path_recursively(root_dir: str, image_filename: str) -> Optional[str]:
-    """Recursively searches for image_filename within root_dir."""
-    for dirpath, _, filenames in os.walk(root_dir):
-        if image_filename in filenames:
-            return os.path.join(dirpath, image_filename)
+    Args:
+        root_dir: Root directory to start the search.
+        filename: Name of the file to find.
+
+    Returns:
+        Path to the found file, or None if not found.
+    """
+    for path in root_dir.rglob(filename):
+        if path.is_file():
+            return path
     return None
