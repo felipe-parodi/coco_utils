@@ -3,7 +3,7 @@
 import json
 import tempfile
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any, Dict
 
 import numpy as np
 import pytest

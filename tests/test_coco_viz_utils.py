@@ -2,14 +2,14 @@
 
 import json
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from PIL import Image
 
 from coco_utils.coco_viz_utils import (
-    find_image_info,
     find_annotations,
+    find_image_info,
     visualize_bbox,
     visualize_keypoints,
 )

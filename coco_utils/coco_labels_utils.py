@@ -19,7 +19,6 @@ from .coco_viz_utils import find_annotations, find_image_info
 from .exceptions import (
     FileOperationError,
     InvalidCOCOFormatError,
-    ValidationError,
     VisualizationError,
 )
 from .logger import get_logger
@@ -385,7 +384,7 @@ def shrink_coco_bboxes(
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    logger.info(f"Summary before saving:")
+    logger.info("Summary before saving:")
     logger.info(f"  Output path: {output_path}")
     logger.info(f"  Original images: {len(coco_data.get('images', []))}")
     logger.info(f"  Original annotations: {len(coco_data.get('annotations', []))}")

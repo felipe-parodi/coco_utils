@@ -14,7 +14,8 @@
       "Bash(black:*)",
       "Bash(isort:*)",
       "Bash(flake8:*)",
-      "Bash(mypy:*)"
+      "Bash(mypy:*)",
+      "Bash(grep:*)"
     ],
     "deny": [],
     "ask": []
