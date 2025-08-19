@@ -61,3 +61,4 @@ var/
 Thumbs.db
 
 # Other project-specific files (Add as needed) 
+.claude/
