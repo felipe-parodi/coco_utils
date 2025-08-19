@@ -41,7 +41,7 @@ class TestKeepFirstNImages:
             output_file,
             num_images_to_keep=2,
             validate_before=False,
-            validate_after=False
+            validate_after=False,
         )
 
         # Verify results
@@ -72,13 +72,13 @@ class TestKeepFirstNImages:
 
         with patch("coco_utils.coco_file_utils.validate_annotations") as mock_validate:
             mock_validate.return_value = (True, sample_coco_data)
-            
+
             result = keep_first_n_images(
                 input_file,
                 output_file,
                 num_images_to_keep=1,
                 validate_before=True,
-                validate_after=True
+                validate_after=True,
             )
 
             # Validation should be called twice (before and after)
@@ -88,9 +88,7 @@ class TestKeepFirstNImages:
         """Test error when input file doesn't exist."""
         with pytest.raises(FileNotFoundError, match="Input JSON file not found"):
             keep_first_n_images(
-                tmp_path / "nonexistent.json",
-                tmp_path / "output.json",
-                num_images_to_keep=1
+                tmp_path / "nonexistent.json", tmp_path / "output.json", num_images_to_keep=1
             )
 
     def test_keep_first_n_images_invalid_num(
@@ -102,18 +100,10 @@ class TestKeepFirstNImages:
             json.dump(sample_coco_data, f)
 
         with pytest.raises(ValueError, match="must be positive"):
-            keep_first_n_images(
-                input_file,
-                tmp_path / "output.json",
-                num_images_to_keep=0
-            )
+            keep_first_n_images(input_file, tmp_path / "output.json", num_images_to_keep=0)
 
         with pytest.raises(ValueError, match="must be positive"):
-            keep_first_n_images(
-                input_file,
-                tmp_path / "output.json",
-                num_images_to_keep=-1
-            )
+            keep_first_n_images(input_file, tmp_path / "output.json", num_images_to_keep=-1)
 
     def test_keep_first_n_images_more_than_available(
         self, sample_coco_data: Dict[str, Any], tmp_path: Path
@@ -130,7 +120,7 @@ class TestKeepFirstNImages:
             output_file,
             num_images_to_keep=100,  # More than available
             validate_before=False,
-            validate_after=False
+            validate_after=False,
         )
 
         # Should keep all images
@@ -138,12 +128,8 @@ class TestKeepFirstNImages:
 
     def test_keep_first_n_images_empty_dataset(self, tmp_path: Path) -> None:
         """Test keeping images from empty dataset."""
-        empty_data = {
-            "images": [],
-            "annotations": [],
-            "categories": []
-        }
-        
+        empty_data = {"images": [], "annotations": [], "categories": []}
+
         input_file = tmp_path / "input.json"
         with open(input_file, "w") as f:
             json.dump(empty_data, f)
@@ -155,7 +141,7 @@ class TestKeepFirstNImages:
             output_file,
             num_images_to_keep=5,
             validate_before=False,
-            validate_after=False
+            validate_after=False,
         )
 
         assert len(result["images"]) == 0
@@ -168,26 +154,19 @@ class TestKeepFirstNImages:
             f.write("not valid json{")
 
         with pytest.raises(InvalidCOCOFormatError, match="Invalid JSON"):
-            keep_first_n_images(
-                input_file,
-                tmp_path / "output.json",
-                num_images_to_keep=1
-            )
+            keep_first_n_images(input_file, tmp_path / "output.json", num_images_to_keep=1)
 
     def test_keep_first_n_images_missing_keys(self, tmp_path: Path) -> None:
         """Test error when required keys are missing."""
         incomplete_data = {"images": []}  # Missing annotations and categories
-        
+
         input_file = tmp_path / "input.json"
         with open(input_file, "w") as f:
             json.dump(incomplete_data, f)
 
         with pytest.raises(InvalidCOCOFormatError, match="missing required keys"):
             keep_first_n_images(
-                input_file,
-                tmp_path / "output.json",
-                num_images_to_keep=1,
-                validate_before=False
+                input_file, tmp_path / "output.json", num_images_to_keep=1, validate_before=False
             )
 
 
@@ -198,23 +177,15 @@ class TestMergeCOCOFiles:
         """Test basic merging of two COCO files."""
         # Create two COCO files with different images
         coco1 = {
-            "images": [
-                {"id": 1, "file_name": "img1.jpg", "width": 100, "height": 100}
-            ],
-            "annotations": [
-                {"id": 1, "image_id": 1, "category_id": 1, "bbox": [0, 0, 10, 10]}
-            ],
-            "categories": [{"id": 1, "name": "cat"}]
+            "images": [{"id": 1, "file_name": "img1.jpg", "width": 100, "height": 100}],
+            "annotations": [{"id": 1, "image_id": 1, "category_id": 1, "bbox": [0, 0, 10, 10]}],
+            "categories": [{"id": 1, "name": "cat"}],
         }
-        
+
         coco2 = {
-            "images": [
-                {"id": 1, "file_name": "img2.jpg", "width": 200, "height": 200}
-            ],
-            "annotations": [
-                {"id": 1, "image_id": 1, "category_id": 1, "bbox": [10, 10, 20, 20]}
-            ],
-            "categories": [{"id": 1, "name": "dog"}]
+            "images": [{"id": 1, "file_name": "img2.jpg", "width": 200, "height": 200}],
+            "annotations": [{"id": 1, "image_id": 1, "category_id": 1, "bbox": [10, 10, 20, 20]}],
+            "categories": [{"id": 1, "name": "dog"}],
         }
 
         file1 = tmp_path / "coco1.json"
@@ -226,11 +197,7 @@ class TestMergeCOCOFiles:
         with open(file2, "w") as f:
             json.dump(coco2, f)
 
-        result = merge_coco_files(
-            [file1, file2],
-            output_file,
-            validate_after_merge=False
-        )
+        result = merge_coco_files([file1, file2], output_file, validate_after_merge=False)
 
         # Check merged result
         assert len(result["images"]) == 2
@@ -249,13 +216,13 @@ class TestMergeCOCOFiles:
         coco1 = {
             "images": [{"id": 1, "file_name": "img1.jpg"}],
             "annotations": [{"id": 1, "image_id": 1, "category_id": 1}],
-            "categories": [{"id": 1, "name": "cat", "supercategory": "animal"}]
+            "categories": [{"id": 1, "name": "cat", "supercategory": "animal"}],
         }
-        
+
         coco2 = {
             "images": [{"id": 1, "file_name": "img2.jpg"}],
             "annotations": [{"id": 1, "image_id": 1, "category_id": 2}],
-            "categories": [{"id": 2, "name": "cat", "supercategory": "animal"}]
+            "categories": [{"id": 2, "name": "cat", "supercategory": "animal"}],
         }
 
         file1 = tmp_path / "coco1.json"
@@ -267,11 +234,7 @@ class TestMergeCOCOFiles:
         with open(file2, "w") as f:
             json.dump(coco2, f)
 
-        result = merge_coco_files(
-            [file1, file2],
-            output_file,
-            validate_after_merge=False
-        )
+        result = merge_coco_files([file1, file2], output_file, validate_after_merge=False)
 
         # Should have only one "cat" category
         assert len(result["categories"]) == 1
@@ -288,7 +251,7 @@ class TestMergeCOCOFiles:
         coco_data = {
             "images": [{"id": 1, "file_name": "img.jpg"}],
             "annotations": [],
-            "categories": []
+            "categories": [],
         }
         with open(existing_file, "w") as f:
             json.dump(coco_data, f)
@@ -297,7 +260,7 @@ class TestMergeCOCOFiles:
         result = merge_coco_files(
             [existing_file, tmp_path / "missing.json"],
             tmp_path / "output.json",
-            validate_after_merge=False
+            validate_after_merge=False,
         )
 
         # Should still process the existing file
@@ -311,13 +274,13 @@ class TestMergeCOCOFiles:
         coco1 = {
             "images": [{"id": 1, "file_name": "same.jpg", "width": 100}],
             "annotations": [{"id": 1, "image_id": 1, "category_id": 1}],
-            "categories": [{"id": 1, "name": "cat"}]
+            "categories": [{"id": 1, "name": "cat"}],
         }
-        
+
         coco2 = {
             "images": [{"id": 2, "file_name": "same.jpg", "width": 200}],
             "annotations": [{"id": 2, "image_id": 2, "category_id": 1}],
-            "categories": [{"id": 1, "name": "cat"}]
+            "categories": [{"id": 1, "name": "cat"}],
         }
 
         file1 = tmp_path / "coco1.json"
@@ -332,11 +295,7 @@ class TestMergeCOCOFiles:
         # Mock user choosing first file for duplicates
         mock_choice.return_value = 0  # Choose first file
 
-        result = merge_coco_files(
-            [file1, file2],
-            output_file,
-            validate_after_merge=False
-        )
+        result = merge_coco_files([file1, file2], output_file, validate_after_merge=False)
 
         # Should keep only one image with "same.jpg"
         assert len(result["images"]) == 1
@@ -368,7 +327,7 @@ class TestSplitCOCODataset:
             test_ratio=0.2,
             copy_images=False,
             seed=42,
-            validate_before_split=False
+            validate_before_split=False,
         )
 
         # Check that files were created
@@ -393,7 +352,7 @@ class TestSplitCOCODataset:
         train_ids = {img["id"] for img in train_data["images"]}
         val_ids = {img["id"] for img in val_data["images"]}
         test_ids = {img["id"] for img in test_data["images"]}
-        
+
         assert len(train_ids & val_ids) == 0
         assert len(train_ids & test_ids) == 0
         assert len(val_ids & test_ids) == 0
@@ -425,7 +384,7 @@ class TestSplitCOCODataset:
             test_ratio=0.2,
             copy_images=True,
             seed=42,
-            validate_before_split=False
+            validate_before_split=False,
         )
 
         # Check that image directories were created
@@ -437,7 +396,7 @@ class TestSplitCOCODataset:
         train_images = list((output_dir / "train").iterdir())
         val_images = list((output_dir / "val").iterdir())
         test_images = list((output_dir / "test").iterdir())
-        
+
         total_copied = len(train_images) + len(val_images) + len(test_images)
         assert total_copied == len(sample_coco_data["images"])
 
@@ -460,7 +419,7 @@ class TestSplitCOCODataset:
                 images_dir,
                 train_ratio=0.5,
                 val_ratio=0.3,
-                test_ratio=0.3
+                test_ratio=0.3,
             )
 
         # Invalid ratio values
@@ -471,7 +430,7 @@ class TestSplitCOCODataset:
                 images_dir,
                 train_ratio=1.5,
                 val_ratio=0.0,
-                test_ratio=-0.5
+                test_ratio=-0.5,
             )
 
     def test_split_coco_dataset_missing_images_dir(
@@ -484,10 +443,7 @@ class TestSplitCOCODataset:
 
         with pytest.raises(FileNotFoundError, match="Source images directory not found"):
             split_coco_dataset(
-                input_file,
-                tmp_path / "splits",
-                tmp_path / "nonexistent_images",
-                copy_images=True
+                input_file, tmp_path / "splits", tmp_path / "nonexistent_images", copy_images=True
             )
 
     def test_split_coco_dataset_reproducible_with_seed(
@@ -509,7 +465,7 @@ class TestSplitCOCODataset:
             images_dir,
             seed=123,
             copy_images=False,
-            validate_before_split=False
+            validate_before_split=False,
         )
 
         # Second split with same seed
@@ -520,7 +476,7 @@ class TestSplitCOCODataset:
             images_dir,
             seed=123,
             copy_images=False,
-            validate_before_split=False
+            validate_before_split=False,
         )
 
         # Load and compare
@@ -536,12 +492,8 @@ class TestSplitCOCODataset:
 
     def test_split_coco_dataset_empty_dataset(self, tmp_path: Path) -> None:
         """Test splitting empty dataset."""
-        empty_data = {
-            "images": [],
-            "annotations": [],
-            "categories": []
-        }
-        
+        empty_data = {"images": [], "annotations": [], "categories": []}
+
         input_file = tmp_path / "input.json"
         with open(input_file, "w") as f:
             json.dump(empty_data, f)
@@ -551,8 +503,5 @@ class TestSplitCOCODataset:
 
         with pytest.raises(InvalidCOCOFormatError, match="No images found"):
             split_coco_dataset(
-                input_file,
-                tmp_path / "splits",
-                images_dir,
-                validate_before_split=False
+                input_file, tmp_path / "splits", images_dir, validate_before_split=False
             )

@@ -13,7 +13,7 @@ from PIL import Image
 @pytest.fixture
 def sample_coco_data() -> Dict[str, Any]:
     """Create sample COCO format data for testing.
-    
+
     Returns:
         A dictionary containing sample COCO data with images, annotations, and categories.
     """
@@ -24,13 +24,7 @@ def sample_coco_data() -> Dict[str, Any]:
             "year": 2024,
             "contributor": "coco_utils tests",
         },
-        "licenses": [
-            {
-                "id": 1,
-                "name": "Test License",
-                "url": "http://example.com"
-            }
-        ],
+        "licenses": [{"id": 1, "name": "Test License", "url": "http://example.com"}],
         "images": [
             {
                 "id": 1,
@@ -49,7 +43,7 @@ def sample_coco_data() -> Dict[str, Any]:
                 "file_name": "test_image_3.jpg",
                 "width": 1024,
                 "height": 768,
-            }
+            },
         ],
         "annotations": [
             {
@@ -95,7 +89,7 @@ def sample_coco_data() -> Dict[str, Any]:
 @pytest.fixture
 def sample_coco_with_keypoints() -> Dict[str, Any]:
     """Create sample COCO data with keypoint annotations.
-    
+
     Returns:
         A dictionary containing COCO data with keypoint annotations.
     """
@@ -119,11 +113,21 @@ def sample_coco_with_keypoints() -> Dict[str, Any]:
                 "category_id": 1,
                 "bbox": [100, 100, 200, 300],
                 "keypoints": [
-                    150, 150, 2,  # visible keypoint
-                    200, 200, 2,  # visible keypoint
-                    250, 250, 1,  # occluded keypoint
-                    0, 0, 0,      # not labeled
-                    300, 350, 2,  # visible keypoint
+                    150,
+                    150,
+                    2,  # visible keypoint
+                    200,
+                    200,
+                    2,  # visible keypoint
+                    250,
+                    250,
+                    1,  # occluded keypoint
+                    0,
+                    0,
+                    0,  # not labeled
+                    300,
+                    350,
+                    2,  # visible keypoint
                 ],
                 "num_keypoints": 4,
                 "area": 60000,
@@ -145,10 +149,10 @@ def sample_coco_with_keypoints() -> Dict[str, Any]:
 @pytest.fixture
 def temp_dir(tmp_path) -> Path:
     """Create a temporary directory for test files.
-    
+
     Args:
         tmp_path: Pytest's tmp_path fixture.
-        
+
     Returns:
         Path to the temporary directory.
     """
@@ -158,11 +162,11 @@ def temp_dir(tmp_path) -> Path:
 @pytest.fixture
 def sample_json_file(temp_dir, sample_coco_data) -> Path:
     """Create a temporary JSON file with sample COCO data.
-    
+
     Args:
         temp_dir: Temporary directory path.
         sample_coco_data: Sample COCO data dictionary.
-        
+
     Returns:
         Path to the created JSON file.
     """
@@ -175,16 +179,16 @@ def sample_json_file(temp_dir, sample_coco_data) -> Path:
 @pytest.fixture
 def sample_images(temp_dir) -> Path:
     """Create sample image files for testing.
-    
+
     Args:
         temp_dir: Temporary directory path.
-        
+
     Returns:
         Path to the directory containing test images.
     """
     image_dir = temp_dir / "images"
     image_dir.mkdir(exist_ok=True)
-    
+
     # Create test images with different sizes
     test_images = [
         ("test_image_1.jpg", (640, 480)),
@@ -192,35 +196,35 @@ def sample_images(temp_dir) -> Path:
         ("test_image_3.jpg", (1024, 768)),
         ("test_keypoints.jpg", (640, 480)),
     ]
-    
+
     for filename, size in test_images:
         # Create a simple RGB image with random colors
         img_array = np.random.randint(0, 255, (*size[::-1], 3), dtype=np.uint8)
         img = Image.fromarray(img_array)
         img.save(image_dir / filename)
-    
+
     return image_dir
 
 
 @pytest.fixture
 def multiple_coco_files(temp_dir, sample_coco_data) -> list[Path]:
     """Create multiple COCO JSON files for merge testing.
-    
+
     Args:
         temp_dir: Temporary directory path.
         sample_coco_data: Base sample COCO data.
-        
+
     Returns:
         List of paths to created COCO JSON files.
     """
     files = []
-    
+
     # Create first file with original data
     file1 = temp_dir / "coco1.json"
     with open(file1, "w") as f:
         json.dump(sample_coco_data, f)
     files.append(file1)
-    
+
     # Create second file with modified IDs
     data2 = json.loads(json.dumps(sample_coco_data))  # Deep copy
     # Offset IDs to avoid conflicts
@@ -230,19 +234,19 @@ def multiple_coco_files(temp_dir, sample_coco_data) -> list[Path]:
     for ann in data2["annotations"]:
         ann["id"] += 100
         ann["image_id"] += 100
-    
+
     file2 = temp_dir / "coco2.json"
     with open(file2, "w") as f:
         json.dump(data2, f)
     files.append(file2)
-    
+
     return files
 
 
 @pytest.fixture
 def invalid_coco_data() -> Dict[str, Any]:
     """Create invalid COCO data for error testing.
-    
+
     Returns:
         Dictionary with invalid COCO structure.
     """
