@@ -54,10 +54,7 @@ def find_annotations(coco_data: Dict[str, Any], image_id: int) -> List[Dict[str,
         >>> find_annotations(coco_data, 1)
         [{"id": 1, "image_id": 1, "bbox": [10, 10, 50, 50]}]
     """
-    return [
-        ann for ann in coco_data.get("annotations", []) 
-        if ann.get("image_id") == image_id
-    ]
+    return [ann for ann in coco_data.get("annotations", []) if ann.get("image_id") == image_id]
 
 
 def visualize_bbox(
@@ -95,7 +92,7 @@ def visualize_bbox(
         >>> visualize_bbox(coco_data, image_id=1, image_dir="./images")
     """
     image_dir = Path(image_dir)
-    
+
     # Find image information
     img_info = find_image_info(coco_data, image_id)
     if not img_info:
@@ -112,7 +109,7 @@ def visualize_bbox(
     if not image_filename:
         logger.error(f"'file_name' missing for image ID {image_id}")
         raise VisualizationError(f"'file_name' missing for image ID {image_id}")
-    
+
     image_path = image_dir / image_filename
 
     # Load image
@@ -136,16 +133,12 @@ def visualize_bbox(
 
         if bbox and len(bbox) == 4:
             x_min, y_min, width, height = bbox
-            
+
             # Convert to PIL format [x0, y0, x1, y1]
             x_max = x_min + width
             y_max = y_min + height
-            
-            draw.rectangle(
-                [x_min, y_min, x_max, y_max], 
-                outline=box_color, 
-                width=box_width
-            )
+
+            draw.rectangle([x_min, y_min, x_max, y_max], outline=box_color, width=box_width)
             logger.debug(f"Drew bbox {bbox} for annotation ID {ann_id}")
             num_boxes_drawn += 1
         elif "bbox" in annotation:
@@ -232,10 +225,9 @@ def visualize_keypoints(
     # Get annotations with keypoints
     annotations = find_annotations(coco_data, image_id)
     keypoint_annotations = [
-        ann for ann in annotations
-        if "keypoints" in ann and ann.get("num_keypoints", 0) > 0
+        ann for ann in annotations if "keypoints" in ann and ann.get("num_keypoints", 0) > 0
     ]
-    
+
     if not keypoint_annotations:
         logger.warning(f"No annotations with keypoints found for image ID {image_id}")
         # Still visualize the image without keypoints
@@ -300,14 +292,18 @@ def visualize_keypoints(
         for k in range(0, len(keypoints), 3):
             x, y, v = keypoints[k], keypoints[k + 1], keypoints[k + 2]
             kp_coords.append((x, y, v))
-            
+
             # v=0: not labeled, v=1: labeled but not visible, v=2: labeled and visible
             if v > 0:  # Draw if labeled
                 draw.ellipse(
-                    (x - keypoint_radius, y - keypoint_radius, 
-                     x + keypoint_radius, y + keypoint_radius),
+                    (
+                        x - keypoint_radius,
+                        y - keypoint_radius,
+                        x + keypoint_radius,
+                        y + keypoint_radius,
+                    ),
                     fill=color,
-                    outline=color
+                    outline=color,
                 )
 
         # Draw skeleton connections
@@ -316,18 +312,14 @@ def visualize_keypoints(
                 # COCO uses 1-based indexing for skeleton
                 idx1 = connection[0] - 1
                 idx2 = connection[1] - 1
-                
+
                 if 0 <= idx1 < len(kp_coords) and 0 <= idx2 < len(kp_coords):
                     x1, y1, v1 = kp_coords[idx1]
                     x2, y2, v2 = kp_coords[idx2]
-                    
+
                     # Draw connection if both keypoints are labeled
                     if v1 > 0 and v2 > 0:
-                        draw.line(
-                            [(x1, y1), (x2, y2)], 
-                            fill=skeleton_color, 
-                            width=skeleton_width
-                        )
+                        draw.line([(x1, y1), (x2, y2)], fill=skeleton_color, width=skeleton_width)
 
     num_individuals = len(keypoint_annotations)
     logger.info(f"Visualized keypoints for {num_individuals} individual(s)")

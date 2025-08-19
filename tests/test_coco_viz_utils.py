@@ -92,13 +92,17 @@ class TestVisualizeBbox:
         
     def test_visualize_bbox_image_not_found(self, sample_coco_data, temp_dir):
         """Test visualization when image file doesn't exist."""
-        # Should handle missing image gracefully
-        visualize_bbox(sample_coco_data, 1, str(temp_dir))
+        from coco_utils.exceptions import ImageNotFoundError
+        # Should raise ImageNotFoundError for missing image
+        with pytest.raises(ImageNotFoundError):
+            visualize_bbox(sample_coco_data, 1, str(temp_dir))
         
     def test_visualize_bbox_invalid_image_id(self, sample_coco_data, sample_images):
         """Test visualization with invalid image ID."""
-        # Should handle invalid ID gracefully
-        visualize_bbox(sample_coco_data, 999, str(sample_images))
+        from coco_utils.exceptions import VisualizationError
+        # Should raise VisualizationError for invalid image ID
+        with pytest.raises(VisualizationError):
+            visualize_bbox(sample_coco_data, 999, str(sample_images))
         
     @patch("coco_utils.coco_viz_utils.plt.show")
     def test_visualize_bbox_custom_colors(
@@ -138,8 +142,10 @@ class TestVisualizeKeypoints:
         self, sample_coco_with_keypoints, temp_dir
     ):
         """Test keypoint visualization when image file doesn't exist."""
-        # Should handle missing image gracefully
-        visualize_keypoints(sample_coco_with_keypoints, 1, str(temp_dir))
+        from coco_utils.exceptions import ImageNotFoundError
+        # Should raise ImageNotFoundError for missing image
+        with pytest.raises(ImageNotFoundError):
+            visualize_keypoints(sample_coco_with_keypoints, 1, str(temp_dir))
         
     @patch("coco_utils.coco_viz_utils.plt.show")
     def test_visualize_keypoints_with_skeleton(

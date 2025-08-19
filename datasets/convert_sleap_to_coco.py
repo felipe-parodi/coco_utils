@@ -1,11 +1,3 @@
-# convert_sleap_to_coco.py
-
-"""
-Convert SLEAP JSON to COCO JSON
-
-Usage:
-    python convert_sleap_to_coco.py <sleap_json_path> <output_path>
-"""
 
 import argparse
 import json

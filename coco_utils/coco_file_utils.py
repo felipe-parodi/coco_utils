@@ -66,11 +66,9 @@ def keep_first_n_images(
 
     if not input_json_path.exists():
         raise FileNotFoundError(f"Input JSON file not found: {input_json_path}")
-    
+
     if num_images_to_keep <= 0:
-        raise ValueError(
-            f"Number of images to keep must be positive. Got {num_images_to_keep}"
-        )
+        raise ValueError(f"Number of images to keep must be positive. Got {num_images_to_keep}")
 
     # Load JSON data
     try:
@@ -86,11 +84,7 @@ def keep_first_n_images(
     if validate_before:
         logger.info("Validating input annotations before creating subset")
         try:
-            is_valid, data = validate_annotations(
-                data,
-                fix=False,
-                raise_error=True
-            )
+            is_valid, data = validate_annotations(data, fix=False, raise_error=True)
             logger.info("Input annotation validation successful")
         except ValueError as e:
             raise ValidationError(f"Input annotation validation failed: {e}")
@@ -117,9 +111,7 @@ def keep_first_n_images(
         num_actually_kept = total_original_images
         kept_images = all_images
     else:
-        logger.info(
-            f"Keeping the first {num_images_to_keep} images out of {total_original_images}"
-        )
+        logger.info(f"Keeping the first {num_images_to_keep} images out of {total_original_images}")
         num_actually_kept = num_images_to_keep
         kept_images = all_images[:num_images_to_keep]
 
@@ -136,18 +128,14 @@ def keep_first_n_images(
         "categories": data.get("categories", []),
         "images": kept_images,
         "annotations": kept_annotations,
-        **{k: v for k, v in data.items() if k not in ["categories", "images", "annotations"]}
+        **{k: v for k, v in data.items() if k not in ["categories", "images", "annotations"]},
     }
 
     # Optional validation after subset
     if validate_after:
         logger.info("Validating subset annotations before saving")
         try:
-            is_valid, subset_data = validate_annotations(
-                subset_data,
-                fix=False,
-                raise_error=True
-            )
+            is_valid, subset_data = validate_annotations(subset_data, fix=False, raise_error=True)
             logger.info("Subset annotation validation successful")
         except ValueError as e:
             raise ValidationError(f"Subset annotation validation failed: {e}")
@@ -168,20 +156,20 @@ def keep_first_n_images(
 
     except Exception as e:
         raise FileOperationError(f"Error saving subset JSON file: {e}")
-    
+
     return subset_data
 
 
 def _get_user_choice(prompt: str, num_options: int) -> int:
     """Get validated integer input from the user within a range.
-    
+
     Args:
         prompt: The prompt to display to the user.
         num_options: The number of available options.
-        
+
     Returns:
         Zero-based index of the user's choice.
-        
+
     Raises:
         EOFError: If EOF is detected during input.
     """
@@ -206,9 +194,9 @@ def _get_user_choice(prompt: str, num_options: int) -> int:
 
 
 def merge_coco_files(
-    coco_paths: List[Union[str, Path]], 
-    output_path: Union[str, Path], 
-    validate_after_merge: bool = True
+    coco_paths: List[Union[str, Path]],
+    output_path: Union[str, Path],
+    validate_after_merge: bool = True,
 ) -> Dict[str, Any]:
     """Merge multiple COCO-formatted JSON files into a single file.
 
@@ -284,9 +272,7 @@ def merge_coco_files(
                 )
 
     duplicate_filenames = {
-        name: sources
-        for name, sources in filename_to_sources.items()
-        if len(sources) > 1
+        name: sources for name, sources in filename_to_sources.items() if len(sources) > 1
     }
     priority_file_index: Optional[int] = None
 
@@ -297,7 +283,9 @@ def merge_coco_files(
             print(f"  {idx + 1}: {file_path.name}")
 
         try:
-            choice_prompt = f"Enter the number (1-{len(resolved_coco_paths)}) of the priority file: "
+            choice_prompt = (
+                f"Enter the number (1-{len(resolved_coco_paths)}) of the priority file: "
+            )
             priority_file_index = _get_user_choice(choice_prompt, len(resolved_coco_paths))
             logger.info(
                 f"Using file {priority_file_index + 1} "
@@ -415,9 +403,7 @@ def merge_coco_files(
             original_cat_id = ann.get("category_id")
 
             if original_ann_id is None:
-                logger.warning(
-                    f"Skipping annotation with missing ID in {coco_path.name}: {ann}"
-                )
+                logger.warning(f"Skipping annotation with missing ID in {coco_path.name}: {ann}")
                 continue
 
             # Check if the image this annotation belongs to was kept
@@ -457,25 +443,24 @@ def merge_coco_files(
     other_keys = {}
     if loaded_data_cache:
         first_valid_path = next(iter(loaded_data_cache))
-        other_keys = {k: v for k, v in loaded_data_cache[first_valid_path].items()
-                     if k not in ['images', 'annotations', 'categories']}
+        other_keys = {
+            k: v
+            for k, v in loaded_data_cache[first_valid_path].items()
+            if k not in ["images", "annotations", "categories"]
+        }
 
     final_coco = {
         "categories": final_merged_categories,
         "images": merged_images,
         "annotations": merged_annotations,
-        **other_keys
+        **other_keys,
     }
 
     # Optional validation before saving
     if validate_after_merge:
         logger.info("Validating final merged annotations")
         try:
-            is_valid, final_coco = validate_annotations(
-                final_coco,
-                fix=False,
-                raise_error=True
-            )
+            is_valid, final_coco = validate_annotations(final_coco, fix=False, raise_error=True)
             logger.info("Merged annotation validation successful")
         except ValueError as e:
             raise ValidationError(f"Merged annotation validation failed: {e}")
@@ -498,7 +483,7 @@ def merge_coco_files(
 
     except Exception as e:
         raise FileOperationError(f"Error saving final merged file: {e}")
-    
+
     return final_coco
 
 
@@ -558,15 +543,13 @@ def split_coco_dataset(
 
     if not input_json_path.exists():
         raise FileNotFoundError(f"Input JSON file not found: {input_json_path}")
-    
+
     if not images_dir.exists() and copy_images:
         raise FileNotFoundError(f"Source images directory not found: {images_dir}")
-    
-    if not (
-        0.0 < train_ratio < 1.0 and 0.0 <= val_ratio < 1.0 and 0.0 <= test_ratio < 1.0
-    ):
+
+    if not (0.0 < train_ratio < 1.0 and 0.0 <= val_ratio < 1.0 and 0.0 <= test_ratio < 1.0):
         raise ValueError("Ratios must be between 0 and 1")
-    
+
     if not abs((train_ratio + val_ratio + test_ratio) - 1.0) < 1e-9:
         raise ValueError(
             f"Ratios must sum to 1.0 (Current sum: {train_ratio + val_ratio + test_ratio})"
@@ -586,11 +569,7 @@ def split_coco_dataset(
     if validate_before_split:
         logger.info("Validating input annotations before splitting")
         try:
-            is_valid, data = validate_annotations(
-                data,
-                fix=False,
-                raise_error=True
-            )
+            is_valid, data = validate_annotations(data, fix=False, raise_error=True)
             logger.info("Input annotation validation successful")
         except ValueError as e:
             raise ValidationError(f"Input annotation validation failed: {e}")
@@ -628,14 +607,9 @@ def split_coco_dataset(
     val_size = int(total_images * val_ratio)
     test_size = total_images - train_size - val_size
 
-    if (
-        train_size == 0
-        or (val_ratio > 0 and val_size == 0)
-        or (test_ratio > 0 and test_size == 0)
-    ):
+    if train_size == 0 or (val_ratio > 0 and val_size == 0) or (test_ratio > 0 and test_size == 0):
         logger.warning(
-            "Ratios result in zero images for one or more splits. "
-            "Adjust ratios or dataset size."
+            "Ratios result in zero images for one or more splits. " "Adjust ratios or dataset size."
         )
 
     # Split the image IDs
@@ -657,43 +631,27 @@ def split_coco_dataset(
     train_annotations = [
         ann for img_id in train_image_ids for ann in annotations_by_image_id[img_id]
     ]
-    val_annotations = [
-        ann for img_id in val_image_ids for ann in annotations_by_image_id[img_id]
-    ]
-    test_annotations = [
-        ann for img_id in test_image_ids for ann in annotations_by_image_id[img_id]
-    ]
+    val_annotations = [ann for img_id in val_image_ids for ann in annotations_by_image_id[img_id]]
+    test_annotations = [ann for img_id in test_image_ids for ann in annotations_by_image_id[img_id]]
 
     # Create new JSON data dictionaries
     train_data = {
         "categories": data["categories"],
         "images": train_images,
         "annotations": train_annotations,
-        **{
-            k: v
-            for k, v in data.items()
-            if k not in ["categories", "images", "annotations"]
-        },
+        **{k: v for k, v in data.items() if k not in ["categories", "images", "annotations"]},
     }
     val_data = {
         "categories": data["categories"],
         "images": val_images,
         "annotations": val_annotations,
-        **{
-            k: v
-            for k, v in data.items()
-            if k not in ["categories", "images", "annotations"]
-        },
+        **{k: v for k, v in data.items() if k not in ["categories", "images", "annotations"]},
     }
     test_data = {
         "categories": data["categories"],
         "images": test_images,
         "annotations": test_annotations,
-        **{
-            k: v
-            for k, v in data.items()
-            if k not in ["categories", "images", "annotations"]
-        },
+        **{k: v for k, v in data.items() if k not in ["categories", "images", "annotations"]},
     }
 
     # Save the new JSON files
