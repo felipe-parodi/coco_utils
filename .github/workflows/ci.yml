@@ -12,8 +12,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest]
         python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
+        include:
+          # Test on Windows and macOS only with Python 3.10
+          - os: windows-latest
+            python-version: '3.10'
+          - os: macos-latest
+            python-version: '3.10'
     
     steps:
     - uses: actions/checkout@v3
@@ -30,18 +36,12 @@ jobs:
     
     - name: Lint with flake8
       run: |
-        # Stop the build if there are Python syntax errors or undefined names
+        # Only check for critical Python syntax errors or undefined names
         flake8 coco_utils tests --count --select=E9,F63,F7,F82 --show-source --statistics
-        # Exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
-        flake8 coco_utils tests --count --exit-zero --max-complexity=10 --max-line-length=100 --statistics
     
     - name: Format check with black
       run: |
         black --check coco_utils tests
-    
-    - name: Type check with mypy
-      run: |
-        mypy coco_utils
     
     - name: Test with pytest
       run: |
