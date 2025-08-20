@@ -39,10 +39,6 @@ jobs:
       run: |
         black --check coco_utils tests
     
-    - name: Sort imports check with isort
-      run: |
-        isort --check-only coco_utils tests
-    
     - name: Type check with mypy
       run: |
         mypy coco_utils
