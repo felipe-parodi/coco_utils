@@ -1,7 +1,6 @@
 """Pytest configuration and fixtures for coco_utils tests."""
 
 import json
-import tempfile
 from pathlib import Path
 from typing import Any, Dict
 

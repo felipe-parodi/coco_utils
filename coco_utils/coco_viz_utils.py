@@ -4,7 +4,6 @@ This module provides functions to visualize COCO dataset annotations,
 including bounding boxes and keypoints, on their corresponding images.
 """
 
-import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -34,7 +33,7 @@ def find_image_info(coco_data: Dict[str, Any], image_id: int) -> Optional[Dict[s
     """
     for img_info in coco_data.get("images", []):
         if img_info.get("id") == image_id:
-            return img_info
+            return img_info  # type: ignore
     return None
 
 
@@ -179,9 +178,12 @@ def visualize_keypoints(
     Args:
         coco_data: Loaded COCO data dictionary containing 'images', 'annotations', and 'categories'.
         image_id: The ID of the image to visualize.
-        image_dir: Directory containing the image files. Either this or image_root_dir must be provided.
-        image_root_dir: Root directory to search for images recursively. Either this or image_dir must be provided.
-        keypoint_color: Color(s) for keypoints. Can be a single color or list of colors for multiple individuals.
+        image_dir: Directory containing the image files. Either this or image_root_dir
+            must be provided.
+        image_root_dir: Root directory to search for images recursively. Either this or
+            image_dir must be provided.
+        keypoint_color: Color(s) for keypoints. Can be a single color or list of colors
+            for multiple individuals.
         keypoint_radius: Radius of the drawn keypoints in pixels. Default is 5.
         skeleton_color: Color for the skeleton connections. Default is "yellow".
         skeleton_width: Width of the skeleton lines in pixels. Default is 2.

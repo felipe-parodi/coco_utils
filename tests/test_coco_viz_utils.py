@@ -1,11 +1,8 @@
 """Tests for coco_viz_utils module."""
 
-import json
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
-from PIL import Image
 
 from coco_utils.coco_viz_utils import (
     find_annotations,

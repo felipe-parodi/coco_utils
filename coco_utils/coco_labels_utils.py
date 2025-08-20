@@ -59,7 +59,7 @@ def load_coco_data(coco_path: Union[str, Path]) -> Dict[str, Any]:
         with open(coco_path, "r") as f:
             coco_data = json.load(f)
         logger.info(f"Successfully loaded COCO data from {coco_path}")
-        return coco_data
+        return coco_data  # type: ignore
     except json.JSONDecodeError as e:
         raise InvalidCOCOFormatError(f"Invalid JSON in file {coco_path}: {e}")
     except Exception as e:
@@ -278,7 +278,7 @@ def shrink_coco_bboxes(
         if not image_filename:
             raise ValueError(f"'file_name' missing for example image ID {first_modified_id}.")
 
-        image_path = Path(image_dir) / image_filename
+        image_path = image_dir_path / image_filename
 
         try:
             img = Image.open(image_path).convert("RGB")
@@ -418,8 +418,8 @@ def _calculate_geo_props_from_bbox(bbox: List[Union[float, int]]) -> Dict[str, A
             # Ensure w, h are positive for valid calculations
             if w > 0 and h > 0:
                 props["area"] = float(w * h)
-                props["center"] = [float(x + w / 2), float(y + h / 2)]
-                props["scale"] = [float(w / 200.0), float(h / 200.0)]
+                props["center"] = [float(x + w / 2), float(y + h / 2)]  # type: ignore
+                props["scale"] = [float(w / 200.0), float(h / 200.0)]  # type: ignore
     except (TypeError, IndexError):
         # Ignore errors if bbox has invalid content
         pass
@@ -478,7 +478,7 @@ def validate_annotations(
     is_valid = True
     issues_found = defaultdict(list)
     num_fixed = 0
-    fixed_keys_summary = defaultdict(int)
+    fixed_keys_summary: Dict[str, int] = defaultdict(int)
 
     # Use deep copy if fixing to avoid modifying original
     output_coco_data = copy.deepcopy(coco_data) if fix else coco_data

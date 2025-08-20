@@ -1,7 +1,6 @@
 """Tests for coco_file_utils module."""
 
 import json
-import shutil
 from pathlib import Path
 from typing import Any, Dict
 from unittest.mock import MagicMock, patch
@@ -13,11 +12,7 @@ from coco_utils.coco_file_utils import (
     merge_coco_files,
     split_coco_dataset,
 )
-from coco_utils.exceptions import (
-    FileOperationError,
-    InvalidCOCOFormatError,
-    ValidationError,
-)
+from coco_utils.exceptions import InvalidCOCOFormatError
 
 
 class TestKeepFirstNImages:
@@ -73,7 +68,7 @@ class TestKeepFirstNImages:
         with patch("coco_utils.coco_file_utils.validate_annotations") as mock_validate:
             mock_validate.return_value = (True, sample_coco_data)
 
-            result = keep_first_n_images(
+            keep_first_n_images(
                 input_file,
                 output_file,
                 num_images_to_keep=1,

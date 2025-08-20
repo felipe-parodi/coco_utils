@@ -677,7 +677,9 @@ def split_coco_dataset(
         copied_counts = {"train": 0, "val": 0, "test": 0}
         skipped_counts = {"train": 0, "val": 0, "test": 0}
 
-        def _copy_image_set(images, src_dir, dst_dir, split_name):
+        def _copy_image_set(
+            images: List[Dict[str, Any]], src_dir: Path, dst_dir: Path, split_name: str
+        ) -> None:
             for img in images:
                 if "file_name" not in img or not img["file_name"]:
                     logger.warning(
