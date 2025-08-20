@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import numpy as np
 import pytest
@@ -206,7 +206,7 @@ def sample_images(temp_dir) -> Path:
 
 
 @pytest.fixture
-def multiple_coco_files(temp_dir, sample_coco_data) -> list[Path]:
+def multiple_coco_files(temp_dir, sample_coco_data) -> List[Path]:
     """Create multiple COCO JSON files for merge testing.
 
     Args:
